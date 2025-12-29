@@ -8,7 +8,8 @@ import {
   CreditCard, Wallet, Hourglass, Radio, UserCheck, 
   ExternalLink, Layers, ShieldAlert, Settings, FileDown, 
   Calculator, AlertTriangle, ArrowRightLeft, FileCheck, ClipboardList,
-  Printer, HardDriveDownload, FileText, Sparkles, User, Shield, CheckSquare
+  Printer, HardDriveDownload, FileText, Sparkles, User, Shield, CheckSquare, Filter, Github, MoreHorizontal, MapPin, Image as ImageIcon,
+  Zap, History
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -16,18 +17,26 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [tasks, setTasks] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false); 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [isEmpConfigOpen, setIsEmpConfigOpen] = useState(false);
   
-  // Settings Parameters
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+
   const [marketRate, setMarketRate] = useState(278);
   const [gracePeriod, setGracePeriod] = useState(5);
   const [calcUsd, setCalcUsd] = useState(0);
 
-  // New Node Models
   const [newEmp, setNewEmp] = useState({ full_name: '', role: 'Remote Full Stack Dev' });
   const [newProj, setNewProj] = useState({ name: '', client: '', url: '', staff_id: '' });
 
@@ -38,8 +47,14 @@ export default function AdminDashboard() {
   const fetchSystemData = async () => {
     const { data: profs } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     const { data: projs } = await supabase.from('projects').select('*').order('last_report_date', { ascending: true });
+    
     setEmployees(profs || []);
     setProjects(projs || []);
+    setTasks([
+      { id: '0XD46498', title: 'Fix memory leak in websocket', assigned_to: 'Elena Rodriguez', status: 'backlog', priority: 'P0', role: 'Backend' },
+      { id: '0XD46501', title: 'Implement OAuth2 integration', assigned_to: 'Sarah Chen', status: 'active', priority: 'P0', role: 'Security' },
+      { id: '0XD46505', title: 'CDN Edge Node Optimization', assigned_to: 'Marcus Dev', status: 'backlog', priority: 'P1', role: 'Infrastructure' }
+    ]);
   };
 
   const handleAddEmployee = async (e) => {
@@ -76,6 +91,7 @@ export default function AdminDashboard() {
   const deleteEmployee = async (id) => {
     if (window.confirm("CRITICAL: Permanent Deletion?")) {
       await supabase.from('profiles').delete().eq('id', id);
+      setIsEmpConfigOpen(false);
       fetchSystemData();
     }
   };
@@ -86,14 +102,11 @@ export default function AdminDashboard() {
     return diff >= 30; 
   };
 
-  // Logic to calculate pending requests for notification badge
   const pendingApprovals = employees.filter(emp => !emp.is_approved).length;
 
-  // Filter Logic
   const filteredProjects = projects.filter(p => p.project_name.toLowerCase().includes(searchQuery.toLowerCase()) || p.client_name.toLowerCase().includes(searchQuery.toLowerCase()));
   const filteredEmployees = employees.filter(e => e.full_name.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  // --- REPORT LOGIC: PRINT-TO-PDF BRIDGE ---
   const downloadSystemReport = () => {
     const printWindow = window.open('', '_blank');
     let htmlContent = `
@@ -140,45 +153,46 @@ export default function AdminDashboard() {
   return (
     <div className="flex h-screen w-full bg-[#fcfdfe] font-sans overflow-hidden text-[#1a1a1a] selection:bg-cnLightGreen selection:text-white uppercase font-black italic">
       
-      {/* SIDEBAR: (STAYS ORIGINAL AS REQUESTED) */}
-      <aside className="w-60 bg-cnDarkGreen text-white flex flex-col shadow-2xl z-50 shrink-0 hidden md:flex border-r border-white/5">
+      {/* SIDEBAR UPDATED TO #2b945f */}
+      <aside className="w-60 bg-[#2b945f] text-white flex flex-col shadow-2xl z-50 shrink-0 hidden md:flex border-r border-white/5 transition-colors duration-500">
         <div className="p-6 border-b border-white/5">
           <div className="flex items-center gap-2">
-             <div className="p-1.5 bg-cnLightGreen rounded-lg shadow-xl shadow-cnLightGreen/20"><Briefcase size={16}/></div>
+             <div className="p-1.5 bg-[#0c3740] rounded-lg shadow-xl"><Briefcase size={16}/></div>
              <h1 className="text-lg font-black italic uppercase tracking-tighter">Code Nest</h1>
           </div>
-          <p className="text-[8px] font-black text-cnLightGreen mt-2 tracking-[0.3em] uppercase opacity-60 italic ml-0.5">Control Terminal 1.04</p>
+          <p className="text-[8px] font-black text-white/50 mt-2 tracking-[0.3em] uppercase opacity-60 italic ml-0.5">Control Terminal 1.04</p>
         </div>
         <nav className="flex-1 px-3 mt-6 space-y-1">
           <NavButton active={activeTab === 'overview'} icon={<LayoutDashboard size={16}/>} label="Dashboard" onClick={() => setActiveTab('overview')} />
-          <NavButton active={activeTab === 'employees'} icon={<Users size={16}/>} label="Staff registry" onClick={() => setActiveTab('employees')} />
+          <NavButton active={activeTab === 'employees'} icon={<Users size={16}/>} label="Team" onClick={() => setActiveTab('employees')} />
           <NavButton active={activeTab === 'clients'} icon={<UserCheck size={16}/>} label="Clients Center" onClick={() => setActiveTab('clients')} />
-          <NavButton active={activeTab === 'records'} icon={<ClipboardList size={16}/>} label="Internal record" onClick={() => setActiveTab('records')} />
-          <NavButton active={activeTab === 'projects'} icon={<Activity size={16}/>} label="Project matrix" onClick={() => setActiveTab('projects')} />
+          <NavButton active={activeTab === 'tasks'} icon={<ClipboardList size={16}/>} label="Tasks" onClick={() => setActiveTab('tasks')} />
+          <NavButton active={activeTab === 'projects'} icon={<Activity size={16}/>} label="Projects" onClick={() => setActiveTab('projects')} />
           <div className="h-px bg-white/5 my-4 mx-3"></div>
           <NavButton active={activeTab === 'finance'} icon={<DollarSign size={16}/>} label="Finance vault" onClick={() => setActiveTab('finance')} />
           <NavButton active={activeTab === 'settings'} icon={<Settings size={16}/>} label="HQ Settings" onClick={() => setActiveTab('settings')} />
         </nav>
         <div className="p-4 mb-2">
-          <button onClick={() => supabase.auth.signOut()} className="flex items-center gap-3 w-full p-3 bg-red-500/10 text-red-400 border border-red-500/10 rounded-xl hover:bg-red-500 hover:text-white transition-all text-[9px] uppercase tracking-widest font-black italic">
+          <button onClick={() => supabase.auth.signOut()} className="flex items-center gap-3 w-full p-3 bg-[#0c3740]/20 text-white border border-white/10 rounded-xl hover:bg-red-500 hover:text-white transition-all text-[9px] uppercase tracking-widest font-black italic">
             <LogOut size={14}/> <span>HQ Log-out</span>
           </button>
         </div>
       </aside>
 
-      {/* MAIN VIEW AREA: SCALE APPLIED */}
       <main className="flex-1 overflow-y-auto flex flex-col relative bg-[#F9FBFC] min-w-0 font-black italic min-h-screen" style={{ zoom: '0.8' }}>
         
-        {/* HEADER: MODIFIED WITH PROFILE DROPDOWN */}
         <header className="h-16 bg-white/70 backdrop-blur-xl sticky top-0 border-b border-slate-100 px-8 flex justify-between items-center z-40 shrink-0">
           <div className="flex items-center gap-6">
-            <h1 className="text-xl font-black italic uppercase tracking-tight">Dashboard</h1>
+            <h1 className="text-xl font-black italic uppercase tracking-tight">System</h1>
             <div className="flex items-center gap-4 bg-[#eff2f7] px-6 py-2.5 rounded-full w-96 border border-slate-100">
                <Search size={16} className="text-slate-400" />
                <input value={searchQuery} onChange={(e)=>setSearchQuery(e.target.value)} type="text" placeholder="Search projects, tasks, devs..." className="bg-transparent border-none text-[11px] font-black tracking-widest text-[#000000] outline-none w-full uppercase placeholder:text-slate-400 italic"/>
             </div>
           </div>
           <div className="flex items-center gap-6 relative">
+              <button className="flex items-center gap-2 bg-[#F3F4FF] text-[#4c44f2] px-4 py-2 rounded-xl text-[10px] font-bold">
+                 <Sparkles size={14}/> Ask Nest AI
+              </button>
               <div className="relative p-2" onClick={() => setActiveTab('employees')}>
                   <Bell size={20} className={pendingApprovals > 0 ? "text-red-600 animate-bounce" : "text-slate-400"} />
                   {pendingApprovals > 0 && <span className="absolute top-1 right-1 bg-red-600 text-white text-[8px] font-black rounded-full px-1 min-w-[14px] flex items-center justify-center border-2 border-white">{pendingApprovals}</span>}
@@ -188,9 +202,8 @@ export default function AdminDashboard() {
                     <p className="text-[11px] font-black text-[#000000] uppercase italic">Sir Rabnawaz</p>
                     <p className="text-[9px] font-bold text-slate-400 uppercase italic">HQ Administrator</p>
                   </div>
-                  <div className="size-10 bg-cnDarkGreen text-cnLightGreen rounded-full flex items-center justify-center font-black italic text-lg border-2 border-white">R</div>
+                  <div className="size-10 bg-[#0c3740] text-[#2b945f] rounded-full flex items-center justify-center font-black italic text-lg border-2 border-white">R</div>
               </div>
-              {/* DROPDOWN MENU */}
               {isProfileOpen && (
                  <div className="absolute top-16 right-0 w-64 bg-[#0d1629] border border-white/10 rounded-3xl shadow-2xl z-50 overflow-hidden text-white font-black uppercase italic p-4">
                     <div className="p-3 border-b border-white/5 mb-3">
@@ -207,12 +220,11 @@ export default function AdminDashboard() {
 
         <div className="p-8 space-y-8">
           
-          {/* TAB 1: DASHBOARD (APPROVED CLONE) */}
           {activeTab === 'overview' && (
             <div className="space-y-8 animate-in">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <ModernCard label="Active Projects" value={projects.length} icon={<Activity size={24}/>} color="bg-blue-50 text-blue-500" onClick={()=>setActiveTab('projects')}/>
-                <ModernCard label="Tasks Completed" value="0" icon={<CheckSquare size={24}/>} color="bg-emerald-50 text-emerald-500"/>
+                <ModernCard label="Tasks Completed" value="0" icon={<CheckSquare size={24}/>} color="bg-emerald-50 text-emerald-500" onClick={()=>setActiveTab('tasks')}/>
                 <div className="bg-white p-8 rounded-[32px] border shadow-sm">
                    <h3 className="text-xs font-black italic flex items-center gap-2"><Calendar size={18} className="text-pink-500"/> DEADLINES</h3>
                    <div className="mt-8 space-y-6"><div className="border-b pb-2 flex justify-between"><p className="text-[10px] font-black italic">TITAN_CORE</p><p className="text-pink-500 text-[10px]">64%</p></div><div className="border-b pb-2 flex justify-between"><p className="text-[10px] font-black italic">NEBULA_APP</p><p className="text-pink-500 text-[10px]">78%</p></div></div>
@@ -258,27 +270,79 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* TAB 2: STAFF registry (RETAINED FROM ORIGINAL) */}
           {activeTab === 'employees' && (
-            <div className="animate-in space-y-6">
-              <div className="flex justify-between items-center gap-4 border-b border-slate-100 pb-4">
-                 <h2 className="text-3xl font-black italic tracking-tighter text-[#000000] uppercase underline decoration-cnLightGreen decoration-8 underline-offset-8">HQ team node directory</h2>
-                 <button onClick={() => setIsModalOpen(true)} className="bg-cnLightGreen text-white px-6 py-3 rounded-2xl font-black uppercase text-[10px] shadow-xl active:scale-95">Register System member</button>
+            <div className="animate-in space-y-6 normal-case not-italic">
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                   <h2 className="text-2xl font-black text-[#000000]">Engineering Team</h2>
+                   <p className="text-slate-400 font-bold text-[12px]">Manage directory and cross-functional user roles</p>
+                </div>
+                <button onClick={() => setIsModalOpen(true)} className="bg-[#121926] text-white px-5 py-3 rounded-2xl flex items-center gap-2 font-bold text-xs shadow-xl active:scale-95">
+                  <UserPlus size={18}/> Add New User
+                </button>
               </div>
-              <div className="bg-white rounded-[35px] shadow-2xl border border-slate-200 overflow-hidden font-black italic uppercase">
-                <table className="w-full text-left italic">
-                   <thead className="bg-[#f0f4f5] border-b border-slate-200 text-[7.5px] opacity-40 italic tracking-[0.3em]">
-                     <tr><th className="px-8 py-5">Internal logical Identity</th><th className="px-8 py-5">Role</th><th className="px-8 py-5 text-center">Status</th><th className="px-8 py-5 text-right">Records</th></tr>
+
+              <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden font-sans">
+                <div className="px-8 py-6 border-b border-slate-50 flex items-center justify-between bg-white">
+                    <div className="flex items-center gap-3 bg-white border border-slate-200 px-4 py-2 rounded-xl w-64 shadow-sm">
+                      <Search size={14} className="text-slate-400"/>
+                      <input type="text" placeholder="Filter users by name or role..." className="text-[11px] outline-none w-full font-bold text-slate-600"/>
+                    </div>
+                    <div className="flex items-center gap-8 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                        <span className="flex items-center gap-2"><div className="size-2 rounded-full bg-emerald-500"></div> 2 ONLINE</span>
+                        <span className="flex items-center gap-2"><div className="size-2 rounded-full bg-amber-500"></div> 1 BUSY</span>
+                        <span className="flex items-center gap-2"><div className="size-2 rounded-full bg-slate-200"></div> 0 OFFLINE</span>
+                    </div>
+                </div>
+
+                <table className="w-full text-left">
+                   <thead className="bg-[#FBFCFE] text-[10px] font-black uppercase text-slate-400 tracking-[0.1em]">
+                     <tr>
+                        <th className="px-8 py-5">User</th>
+                        <th className="px-8 py-5">Assigned Role</th>
+                        <th className="px-8 py-5 text-center">Status</th>
+                        <th className="px-8 py-5 text-center">Commits (30D)</th>
+                        <th className="px-8 py-5 text-right pr-12">Location</th>
+                     </tr>
                    </thead>
-                   <tbody className="divide-y divide-slate-50 text-[11px]">
+                   <tbody className="divide-y divide-slate-50 text-[12px]">
                      {filteredEmployees.map(emp => (
-                       <tr key={emp.id} className="hover:bg-[#fafcfc] group">
-                         <td className="px-8 py-5 flex items-center gap-4"><div className="size-8 bg-black text-cnLightGreen rounded-lg flex items-center justify-center font-bold">{emp.full_name?.charAt(0)}</div>{emp.full_name}</td>
-                         <td className="px-8 py-5 opacity-40 italic uppercase">{emp.role}</td>
-                         <td className="px-8 py-5 text-center text-cnLightGreen italic"><div className={emp.is_approved ? "" : "text-amber-500"}><ShieldCheck size={14} className="inline"/> {emp.is_approved ? "ACTIVE" : "PENDING"}</div></td>
-                         <td className="px-8 py-5 text-right opacity-0 group-hover:opacity-100 transition-opacity">
-                            {!emp.is_approved && <button onClick={async()=> {await supabase.from('profiles').update({is_approved: true}).eq('id', emp.id); fetchSystemData();}} className="bg-black text-cnLightGreen p-1.5 px-4 rounded-lg mr-2">Authorize</button>}
-                            <button onClick={()=>deleteEmployee(emp.id)} className="p-1.5 text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
+                       <tr key={emp.id} onClick={() => {setSelectedEmployee(emp); setIsEmpConfigOpen(true);}} className="hover:bg-[#F8FAFF] group cursor-pointer transition-colors">
+                         <td className="px-8 py-5">
+                            <div className="flex items-center gap-4">
+                                <div className="size-10 bg-slate-50 rounded-xl flex items-center justify-center border-2 border-slate-100 relative overflow-hidden shadow-inner">
+                                   <ImageIcon size={20} className="text-slate-200 opacity-60" />
+                                </div>
+                                <div>
+                                    <p className="font-black text-[#1a1a1a] mb-0.5">{emp.full_name}</p>
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter opacity-70">ID: {emp.id.split('-')[1]?.slice(0,4) || '710'}</p>
+                                </div>
+                            </div>
+                         </td>
+                         <td className="px-8 py-5">
+                             <div className="flex items-center gap-2 text-slate-500 font-bold">
+                                <Briefcase size={14} className="opacity-40"/> {emp.role}
+                             </div>
+                         </td>
+                         <td className="px-8 py-5">
+                             <div className="flex justify-center">
+                                 <span className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-[10px] font-black border uppercase tracking-widest ${emp.is_approved ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                                    <div className={`size-1.5 rounded-full ${emp.is_approved ? 'bg-emerald-500' : 'bg-amber-500'}`}></div> {emp.is_approved ? "Online" : "Busy"}
+                                 </span>
+                             </div>
+                         </td>
+                         <td className="px-8 py-5">
+                             <div className="flex items-center gap-4 justify-center">
+                                 <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                     <div className="h-full bg-indigo-500 rounded-full" style={{width: '60%'}}></div>
+                                 </div>
+                                 <span className="text-slate-400 font-bold text-[11px]">142</span>
+                             </div>
+                         </td>
+                         <td className="px-8 py-5 text-right pr-12">
+                             <div className="inline-flex items-center gap-2 text-slate-400 font-bold">
+                                 <Globe size={14} className="opacity-40"/> GMT+5
+                             </div>
                          </td>
                        </tr>
                      ))}
@@ -288,45 +352,69 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* TAB 4: INTERNAL RECORDS LEDGER (FULL RESTORE) */}
-          {activeTab === 'records' && (
-            <div className="animate-in space-y-6">
-                <div className="flex justify-between items-center border-b border-CN-LIGHT pb-5 italic font-black uppercase">
+          {activeTab === 'tasks' && (
+             <div className="animate-in space-y-10 normal-case not-italic">
+                <div className="flex justify-between items-center mb-8">
                     <div>
-                        <h2 className="text-2xl text-[#000000] underline decoration-[#000000]/10 italic font-black">Ledger internal logic</h2>
-                        <div className="flex items-center gap-3 text-cnLightGreen mt-2"><div className="size-1.5 bg-cnLightGreen rounded-full"></div> <p className="text-[9px] tracking-widest opacity-60">Record tracking: Automated System audit v4</p></div>
+                        <h2 className="text-3xl font-black text-slate-900 mb-1">Workflow Management</h2>
+                        <p className="text-slate-400 font-bold text-[12px]">Real-time task orchestration across global engineering clusters</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="bg-white border-2 border-slate-50 flex items-center px-5 py-2.5 rounded-2xl shadow-sm">
+                           <Search size={16} className="text-slate-300 mr-3"/>
+                           <input type="text" placeholder="Search tasks..." className="bg-transparent border-none text-[12px] font-bold outline-none w-52"/>
+                        </div>
+                        <button className="bg-white border px-6 py-2.5 rounded-xl font-black text-[10px] text-slate-400 shadow-sm flex items-center gap-3">
+                           PRIORITY: ALL <ChevronRight size={14} className="rotate-90 opacity-40"/>
+                        </button>
+                        <button onClick={() => setIsTaskModalOpen(true)} className="bg-[#4c44f2] text-white px-7 py-2.5 rounded-xl flex items-center gap-2 font-black text-[11px] uppercase shadow-2xl shadow-indigo-600/30 active:scale-95">
+                           <Plus size={18}/> Add Entry
+                        </button>
                     </div>
                 </div>
-                <div className="bg-white rounded-[30px] border shadow-2xl border-slate-100 overflow-hidden italic font-black">
-                    <table className="w-full text-left font-black uppercase italic">
-                        <thead className="bg-[#0c3740] text-white">
-                            <tr className="text-[7.5px] tracking-widest opacity-70">
-                                <th className="px-8 py-5 italic font-black uppercase">operational cycle Identifier</th>
-                                <th className="px-8 py-5 text-center italic font-black uppercase">Protocol stakeholder Name</th>
-                                <th className="px-8 py-5 text-center italic font-black uppercase italic font-black">Payment vector logic</th>
-                                <th className="px-8 py-5 text-right font-black italic uppercase italic font-black">Record risk State</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 italic font-black text-[#000000] text-[11px]">
-                            {projects.map((p, x) => (
-                                <tr key={x} className="hover:bg-[#fafcfc]">
-                                   <td className="px-8 py-5 text-[11px] font-mono tracking-widest italic opacity-20 uppercase font-black">CY-2025/12 RMN-0${x}</td>
-                                   <td className="px-8 py-5 text-[#000000] font-black text-center italic font-black uppercase">{p.client_name}</td>
-                                   <td className="px-8 py-5 text-center text-cnDarkGreen opacity-40 font-black italic uppercase font-black italic font-black uppercase italic font-black uppercase italic font-black">Wait Protocol : clearance in Dec</td>
-                                   <td className="px-8 py-5 text-right italic font-black">
-                                       <span className={`text-[8.5px] p-2 py-0.5 rounded border italic ${checkMaintenanceAlert(p.last_report_date) ? 'text-red-500 border-red-500/20' : 'text-cnLightGreen border-cnLightGreen/20 opacity-40 font-black italic font-black italic font-black'}`}>
-                                         {checkMaintenanceAlert(p.last_report_date) ? "SIGNAL FAILURE REQ AUDIT" : "SYCHRONIZATION ACTIVE"}
-                                       </span>
-                                   </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+
+                <div className="grid grid-cols-4 gap-6 min-h-[600px]">
+                    {[
+                      { key: 'backlog', label: 'BACKLOG', icon: <Clock size={16} className="text-slate-400"/> },
+                      { key: 'active', label: 'ACTIVE', icon: <Zap size={16} className="text-[#4c44f2]"/> },
+                      { key: 'audit', label: 'AUDIT', icon: <AlertCircle size={16} className="text-amber-500"/> },
+                      { key: 'released', label: 'RELEASED', icon: <CheckCircle2 size={16} className="text-emerald-500"/> }
+                    ].map(col => (
+                        <div key={col.key} className="space-y-4">
+                            <div className="flex items-center justify-between px-2 mb-4">
+                               <div className="flex items-center gap-3">
+                                  {col.icon}
+                                  <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-800">{col.label}</h4>
+                               </div>
+                               <span className="bg-white text-slate-400 text-[10px] px-2.5 py-0.5 rounded-full border border-slate-100 font-black">{tasks.filter(t=>t.status === col.key).length}</span>
+                            </div>
+
+                            <div className="bg-[#f3f6fa] rounded-[38px] p-2.5 min-h-[500px] space-y-3 border-2 border-dashed border-slate-200">
+                                {tasks.filter(t => t.status === col.key).map(task => (
+                                    <div key={task.id} onClick={()=>{setSelectedTask(task); setIsTaskModalOpen(true);}} className="bg-white p-6 rounded-[30px] shadow-sm hover:shadow-xl group cursor-pointer transition-all border border-slate-100 relative">
+                                        <div className="flex justify-between mb-5">
+                                           <span className="text-[8.5px] font-black text-pink-500 bg-pink-50 px-3 py-1 rounded-full border border-pink-100">{task.priority} CRITICAL</span>
+                                        </div>
+                                        <h4 className="text-[13px] font-black text-slate-800 italic uppercase mb-6 leading-snug">{task.title}</h4>
+                                        <div className="flex items-center justify-between pt-5 border-t border-slate-50 mt-auto">
+                                            <div className="flex items-center gap-3">
+                                               <div className="size-7 rounded-full bg-slate-100 border overflow-hidden"><img src={`https://i.pravatar.cc/150?u=${task.id}`}/></div>
+                                               <p className="text-[9px] font-black text-slate-400 uppercase italic truncate">{task.assigned_to}</p>
+                                            </div>
+                                            <div className="text-[9px] font-bold text-slate-300 flex items-center gap-1"><Clock size={12}/> 4D LEFT</div>
+                                        </div>
+                                    </div>
+                                ))}
+                                <button className="w-full py-5 rounded-[28px] border-2 border-dashed border-slate-300 text-slate-300 text-[10px] font-black uppercase tracking-widest italic flex items-center justify-center gap-2 hover:bg-slate-50 transition-all">
+                                   <Plus size={16}/> New Entry
+                                </button>
+                            </div>
+                        </div>
+                    ))}
                 </div>
-            </div>
+             </div>
           )}
 
-          {/* TAB 6: HQ SETTINGS (FULL RESTORE) */}
           {activeTab === 'settings' && (
              <div className="animate-in space-y-12 pb-20">
                 <div className="flex justify-between items-start border-b-8 border-slate-50 pb-8 italic font-black uppercase">
@@ -355,16 +443,48 @@ export default function AdminDashboard() {
              </div>
           )}
 
-          {/* PROJECT MATRIX (RETAINED FROM ORIGINAL) */}
           {activeTab === 'projects' && (
-             <div className="animate-in space-y-6 italic uppercase font-black italic font-black">
-                <h2 className="text-2xl font-black tracking-tighter pb-10 border-b">Active project subscription Matrix</h2>
-                <div className="grid md:grid-cols-4 gap-6 font-black italic">
+             <div className="animate-in space-y-10 normal-case not-italic">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h2 className="text-3xl font-black tracking-tight text-slate-900 normal-case not-italic mb-2">Projects</h2>
+                    <h3 className="text-lg font-bold text-slate-800">Portfolio</h3>
+                    <p className="text-slate-500 font-medium text-sm">Overview of all active and completed engineering initiatives</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                     <button className="flex items-center gap-2 bg-white border px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm hover:bg-slate-50"><Filter size={18}/> Filter</button>
+                     <button onClick={()=>setIsProjectModalOpen(true)} className="flex items-center gap-2 bg-[#4c44f2] text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-xl shadow-[#4c44f2]/30 transition-transform active:scale-95"><Plus size={20}/> New Project</button>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                    {filteredProjects.map(proj => (
-                      <div key={proj.id} className="bg-white rounded-[40px] p-8 border hover:shadow-2xl transition-all cursor-pointer group">
-                          <h4 className="text-black mb-2 text-base uppercase font-black">{proj.project_name}</h4>
-                          <p className="text-cnLightGreen text-[9.5px] italic mb-10 opacity-60">CLIENT ID: {proj.client_name}</p>
-                          <div className="border-t pt-5"><button onClick={()=>setIsProjectModalOpen(true)} className="p-3 bg-black text-white rounded-xl shadow-lg transition-transform active:rotate-180 duration-500 group-hover:bg-cnLightGreen group-hover:text-black transition-all"><RefreshCcw size={16}/></button></div>
+                      <div key={proj.id} onClick={()=>{setSelectedProject(proj); setIsDetailModalOpen(true)}} className="bg-white rounded-3xl p-6 border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group shadow-sm">
+                          <div className="flex justify-between items-start mb-6">
+                            <span className="bg-indigo-50 text-[#4c44f2] text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-wider">In Progress</span>
+                            <div className="size-2 bg-slate-200 rounded-full group-hover:bg-indigo-400 transition-colors"></div>
+                          </div>
+                          <h4 className="text-xl font-bold text-slate-900 mb-1 leading-tight">{proj.project_name}</h4>
+                          <p className="text-slate-500 text-sm mb-6 leading-relaxed opacity-80">{proj.client_name} Logic Core Interface System.</p>
+                          
+                          <div className="flex items-center gap-6 text-slate-400 text-[11px] font-bold mb-8 italic uppercase tracking-wider">
+                            <span className="flex items-center gap-2"><User size={14}/> {employees.find(e=>e.id === proj.assigned_to)?.full_name || 'System Admin'}</span>
+                            <span className="flex items-center gap-2"><Calendar size={14}/> {new Date(proj.last_report_date).toLocaleDateString()}</span>
+                          </div>
+
+                          <div className="space-y-2 mb-8">
+                             <div className="flex justify-between text-[10px] font-black tracking-widest text-slate-400 uppercase"><span>Execution Progress</span><span className="text-slate-900">78%</span></div>
+                             <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div className="bg-[#4c44f2] h-full rounded-full" style={{width: '78%'}}></div>
+                             </div>
+                          </div>
+
+                          <div className="flex justify-between items-center pt-5 border-t border-slate-50">
+                             <div className="flex -space-x-2">
+                                {[...Array(3)].map((_, i) => <div key={i} className="size-8 rounded-full border-2 border-white bg-slate-200 overflow-hidden"><img src={`https://i.pravatar.cc/150?u=${proj.id+i}`}/></div>)}
+                             </div>
+                             <div className="text-[10px] font-bold text-slate-400 italic flex items-center gap-2 tracking-wider"><Clock size={12}/> 2 hours ago</div>
+                          </div>
                       </div>
                    ))}
                 </div>
@@ -374,12 +494,187 @@ export default function AdminDashboard() {
         </div>
       </main>
 
-      {/* MODAL ID HANDSHAKE (RETAINED FROM ORIGINAL) */}
+      {/* WORKFLOW EDIT MODAL */}
+      {isTaskModalOpen && (
+          <div className="fixed inset-0 bg-[#0d1629]/95 backdrop-blur-3xl z-[3000] flex items-center justify-center p-4">
+               <div className="bg-[#fcfdfe] w-full max-w-lg rounded-[48px] overflow-hidden shadow-2xl animate-in zoom-in duration-300 border-4 border-white/5 font-sans normal-case not-italic">
+                   <div className="bg-[#12122b] p-8 text-white flex justify-between items-center">
+                       <div className="flex items-center gap-4">
+                           <div className="p-3.5 bg-[#4c44f2] rounded-2xl border border-white/20 shadow-2xl shadow-indigo-600/30">
+                              <Briefcase size={26}/>
+                           </div>
+                           <div>
+                               <h3 className="text-xl font-black mb-0.5">Edit Record</h3>
+                               <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest opacity-60 italic">Operational ID: {selectedTask?.id || '0XD46498'}</p>
+                           </div>
+                       </div>
+                       <X onClick={()=>setIsTaskModalOpen(false)} size={32} className="cursor-pointer text-white/30 hover:text-white transition-all"/>
+                   </div>
+
+                   <div className="p-10 space-y-10">
+                       <div className="space-y-3">
+                           <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest pl-3">Objective Specification</label>
+                           <div className="bg-white border-2 border-slate-50 p-6 rounded-[35px] shadow-inner text-center italic min-h-[140px] flex items-center justify-center">
+                               <p className="text-2xl font-black text-slate-800 leading-tight">
+                                   {selectedTask?.title || "Fix memory leak in websocket"}
+                               </p>
+                           </div>
+                       </div>
+
+                       <div className="grid grid-cols-2 gap-6">
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest pl-2">Personnel Assignment</label>
+                                <div className="bg-white border-2 border-slate-50 p-5 rounded-2xl flex justify-between items-center">
+                                    <span className="text-[12px] font-black text-slate-700 italic truncate">{selectedTask?.assigned_to || "Elena Rodriguez (Backend)"}</span>
+                                    <User size={14} className="text-slate-300"/>
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest pl-2">Lifecycle</label>
+                                <div className="bg-white border-2 border-slate-50 p-5 rounded-2xl flex justify-between items-center">
+                                    <span className="text-[12px] font-black text-slate-700 italic uppercase">{selectedTask?.status || "Backlog"}</span>
+                                    <History size={14} className="text-slate-300"/>
+                                </div>
+                            </div>
+                       </div>
+
+                       <div className="space-y-4">
+                           <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest pl-2">SLA Priority</label>
+                           <div className="bg-slate-100/50 p-1.5 rounded-[24px] flex items-center">
+                               <button className="flex-1 py-4 font-black text-[11px] text-slate-400">P2</button>
+                               <button className="flex-1 py-4 font-black text-[11px] text-slate-400">P1</button>
+                               <button className="flex-1 py-4 bg-red-500 rounded-2xl font-black text-[11px] text-white shadow-xl shadow-red-500/20 active:scale-95 transition-all">P0</button>
+                           </div>
+                       </div>
+
+                       <div className="flex gap-4 pt-4 border-t border-slate-50">
+                            <button className="flex-1 bg-[#4c44f2] text-white py-6 rounded-3xl font-black italic uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl shadow-indigo-600/30">
+                               <FileCheck size={18}/> Synchronize Record
+                            </button>
+                            <button className="bg-white border-2 border-slate-100 p-6 rounded-3xl text-slate-200 hover:text-red-500 hover:bg-red-50 transition-all">
+                               <Trash2 size={24}/>
+                            </button>
+                       </div>
+
+                       <p className="text-[8px] font-black text-center text-slate-400 opacity-50 uppercase tracking-[0.4em] italic pt-4">Secure Transaction Layer • CodeNest Workflow</p>
+                   </div>
+               </div>
+          </div>
+      )}
+
+      {/* TEAM CONFIGURATION / MANAGEMENT MODAL */}
+      {isEmpConfigOpen && selectedEmployee && (
+         <div className="fixed inset-0 bg-[#0d1629]/95 backdrop-blur-3xl z-[1000] flex items-center justify-center p-4">
+             <div className="bg-[#FBFCFE] w-full max-w-[480px] rounded-[38px] overflow-hidden shadow-[0_0_120px_-20px_rgba(0,0,0,0.8)] border-4 border-white/5 animate-in zoom-in duration-300 normal-case not-italic">
+                 <div className="bg-gradient-to-r from-[#1E1B4B] via-[#2D167D] to-[#3B2C8D] p-10 text-white relative">
+                    <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-4">
+                            <div className="bg-[#5A4AF2]/30 p-3.5 rounded-2xl shadow-xl shadow-black/10 backdrop-blur-md border border-white/20">
+                                <UserCheck className="text-white" size={26} />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black tracking-tight leading-none mb-1">User Configuration</h3>
+                                <p className="text-[10px] text-white/50 font-black uppercase tracking-[0.2em]">Node: Engineering Cluster 07</p>
+                            </div>
+                        </div>
+                        <button onClick={() => setIsEmpConfigOpen(false)} className="hover:rotate-90 transition-all text-white/40 hover:text-white"><X size={28}/></button>
+                    </div>
+                 </div>
+
+                 <div className="px-10 pb-12 -mt-10 relative">
+                     <div className="flex justify-center mb-8 relative">
+                         <div className="relative group">
+                            <div className="size-32 bg-slate-100 rounded-[40px] border-8 border-[#FBFCFE] shadow-2xl overflow-hidden group-hover:brightness-75 transition-all">
+                               <img src={`https://i.pravatar.cc/150?u=${selectedEmployee.id}`} className="size-full object-cover" />
+                            </div>
+                            <button className="absolute bottom-0 right-0 bg-[#121926] text-white p-2.5 rounded-xl border-4 border-[#FBFCFE] shadow-lg group-hover:scale-110 transition-transform">
+                                <ImageIcon size={18}/>
+                            </button>
+                         </div>
+                     </div>
+
+                     <form className="space-y-6">
+                        <div className="space-y-2.5">
+                            <label className="text-[10px] font-black text-[#5244F2] uppercase tracking-[0.1em] pl-4 flex items-center gap-2">
+                                <span className="size-4 border-2 border-indigo-200 rounded-full flex items-center justify-center text-[8px] font-bold">i</span> USER FULL NAME
+                            </label>
+                            <input disabled value={selectedEmployee.full_name} className="w-full bg-white border-2 border-slate-100/50 shadow-inner px-8 py-5 rounded-2xl text-lg font-black text-slate-800 placeholder:text-slate-200 outline-none" />
+                        </div>
+
+                        <div className="space-y-2.5">
+                            <label className="text-[10px] font-black text-[#5244F2] uppercase tracking-[0.1em] pl-4 flex items-center gap-2">
+                                <span className="size-4 border-2 border-indigo-200 rounded-full flex items-center justify-center"></span> ORGANIZATIONAL ROLE
+                            </label>
+                            <input value={selectedEmployee.role} className="w-full bg-white border-2 border-slate-100/50 shadow-inner px-8 py-5 rounded-2xl text-lg font-black text-slate-800 outline-none focus:border-indigo-400" />
+                        </div>
+
+                        <div className="space-y-3">
+                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Operational Status</label>
+                             <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1.5 rounded-2xl">
+                                 <button type="button" className={`py-3 rounded-xl font-black text-[9px] uppercase transition-all ${selectedEmployee.is_approved ? 'bg-white text-slate-900 shadow-md scale-[1.02]' : 'text-slate-400'}`}>Online</button>
+                                 <button type="button" className={`py-3 rounded-xl font-black text-[9px] uppercase ${!selectedEmployee.is_approved ? 'bg-white text-slate-900 shadow-md scale-[1.02]' : 'text-slate-400'}`}>Busy</button>
+                                 <button type="button" className="py-3 rounded-xl font-black text-[9px] uppercase text-slate-400">Offline</button>
+                             </div>
+                        </div>
+
+                        <div className="flex gap-4 pt-10 border-t-2 border-slate-100/50 mt-10">
+                            <button className="flex-1 bg-[#5244F2] text-white py-5 rounded-[22px] font-black text-xs uppercase shadow-2xl shadow-indigo-600/40 flex items-center justify-center gap-2 active:scale-95 transition-all">
+                               <HardDriveDownload size={18}/> Update Credentials
+                            </button>
+                            <button onClick={()=>deleteEmployee(selectedEmployee.id)} type="button" className="bg-red-50 text-red-600 border border-red-100 px-8 py-5 rounded-[22px] font-black text-xs uppercase flex items-center justify-center gap-2 active:scale-95 hover:bg-red-600 hover:text-white transition-all">
+                                <Trash2 size={18}/> Offboard
+                            </button>
+                        </div>
+                     </form>
+                 </div>
+             </div>
+         </div>
+      )}
+
+      {/* USER REGISTRATION MODAL */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-[#000000]/95 backdrop-blur-2xl z-[999] flex items-center justify-center p-4">
-           <div className="bg-white w-full max-w-sm rounded-[38px] overflow-hidden border-4 border-cnLightGreen">
-              <div className="bg-[#000000] p-10 text-cnLightGreen flex justify-between font-black uppercase italic italic"><h4>HQ ID Handshake</h4><X onClick={()=>setIsModalOpen(false)} size={20} className="text-red-500 cursor-pointer"/></div>
-              <form onSubmit={handleAddEmployee} className="p-10 space-y-6 uppercase italic italic uppercase font-black italic font-black"> <input placeholder="CORE NAME" className="w-full bg-slate-50 p-6 rounded-3xl outline-none" onChange={e=>setNewEmp({...newEmp, full_name: e.target.value})}/><button className="w-full bg-[#000000] text-cnLightGreen py-6 rounded-[30px] font-black italic border-b-8 border-cnLightGreen">REGISTER CORE NODE</button></form>
+        <div className="fixed inset-0 bg-[#0d1629]/90 backdrop-blur-2xl z-[1001] flex items-center justify-center p-4">
+           <div className="bg-white w-full max-w-sm rounded-[38px] overflow-hidden border-2 border-indigo-100 shadow-2xl normal-case not-italic">
+              <div className="bg-[#121926] p-8 text-white flex justify-between items-center font-black">
+                <div className="flex items-center gap-3">
+                    <UserPlus size={20} className="text-[#4c44f2]"/>
+                    <h4 className="text-base uppercase tracking-widest italic font-black italic">Enrollment Layer</h4>
+                </div>
+                <X onClick={()=>setIsModalOpen(false)} size={24} className="text-white/40 cursor-pointer hover:rotate-90 transition-all"/>
+              </div>
+              <form onSubmit={handleAddEmployee} className="p-10 space-y-6"> 
+                  <div className="space-y-4">
+                      <input required placeholder="User Full Name" className="w-full bg-slate-50 border-2 border-slate-100 p-5 rounded-2xl outline-none font-bold placeholder:text-slate-300" onChange={e=>setNewEmp({...newEmp, full_name: e.target.value})}/>
+                      <input required placeholder="Assign Technical Role" className="w-full bg-slate-50 border-2 border-slate-100 p-5 rounded-2xl outline-none font-bold placeholder:text-slate-300" onChange={e=>setNewEmp({...newEmp, role: e.target.value})}/>
+                  </div>
+                  <button className="w-full bg-[#121926] text-white py-6 rounded-[28px] font-black tracking-widest shadow-xl shadow-indigo-600/10 hover:shadow-2xl transition-all border-b-8 border-[#4c44f2] flex items-center justify-center gap-3">
+                    {isSubmitting ? 'PROCESSING...' : 'INITIALIZE ACCESS'}
+                  </button>
+              </form>
+           </div>
+        </div>
+      )}
+
+      {/* CREATE NEW PROJECT MODAL */}
+      {isProjectModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+           <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl normal-case not-italic">
+             <div className="p-8 space-y-6">
+                <h4 className="text-2xl font-bold mb-2">Deploy New Core</h4>
+                <form onSubmit={handleCreateProject} className="space-y-4">
+                   <input required value={newProj.name} onChange={e=>setNewProj({...newProj, name: e.target.value})} placeholder="Project Name" className="w-full bg-slate-50 border p-4 rounded-xl"/>
+                   <input required value={newProj.client} onChange={e=>setNewProj({...newProj, client: e.target.value})} placeholder="Client Name" className="w-full bg-slate-50 border p-4 rounded-xl"/>
+                   <input required value={newProj.url} onChange={e=>setNewProj({...newProj, url: e.target.value})} placeholder="Platform URL" className="w-full bg-slate-50 border p-4 rounded-xl"/>
+                   <select value={newProj.staff_id} onChange={e=>setNewProj({...newProj, staff_id: e.target.value})} className="w-full bg-slate-50 border p-4 rounded-xl">
+                      <option value="">Assign Engineer...</option>
+                      {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+                   </select>
+                   <div className="flex gap-4 pt-4">
+                     <button type="button" onClick={()=>setIsProjectModalOpen(false)} className="flex-1 border p-4 rounded-xl font-bold">Cancel</button>
+                     <button type="submit" className="flex-1 bg-black text-white p-4 rounded-xl font-bold">{isSubmitting ? 'Deploying...' : 'Start Node'}</button>
+                   </div>
+                </form>
+             </div>
            </div>
         </div>
       )}
@@ -388,12 +683,13 @@ export default function AdminDashboard() {
   );
 }
 
-// SHARED INTERFACE NODES
+// SHARED COMPONENTS UPDATED
 function NavButton({ active, icon, label, onClick }) {
   return (
-    <button onClick={onClick} className={`w-full flex items-center gap-4 px-5 py-3 rounded-2xl font-black text-[10px] uppercase tracking-[0.15em] transition-all relative
-    ${active ? 'bg-cnLightGreen text-[#000000] shadow-[0_20px_40px_-10px_#2b945fcc] scale-105 translate-x-2' : 'text-white/30 hover:text-white/60 opacity-80 italic'}`}>
-      <span className={active ? 'bg-white p-1.5 rounded-xl' : 'opacity-40'}>{icon}</span> {label}
+    <button onClick={onClick} className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-[0.18em] transition-all relative
+    ${active ? 'bg-[#0c3740] text-white shadow-2xl shadow-black/30 scale-[1.03] translate-x-2' : 'text-white/70 hover:bg-white/10 hover:text-white italic opacity-90'}`}>
+      <span className={active ? 'bg-white/10 p-1.5 rounded-xl border border-white/10' : 'opacity-40'}>{icon}</span> {label}
+      {active && <div className="absolute right-4 size-1.5 bg-cnLightGreen rounded-full animate-pulse shadow-[0_0_10px_white]"></div>}
     </button>
   );
 }
@@ -405,8 +701,8 @@ function ModernCard({ label, value, icon, color, onClick }) {
          <div className={`p-4 ${color} rounded-[22px] transition-all group-hover:scale-110 duration-500`}>{icon}</div>
          <p className="text-[8px] text-slate-300 font-black italic tracking-widest group-hover:text-black uppercase">VIEW DETAIL</p>
        </div>
-       <h4 className="text-4xl text-black font-black italic uppercase leading-none font-black uppercase">{value}</h4>
-       <p className="text-[10px] text-slate-400 font-black mt-2 italic uppercase font-black uppercase">{label}</p>
+       <h4 className="text-4xl text-black font-black italic uppercase leading-none">{value}</h4>
+       <p className="text-[10px] text-slate-400 font-black mt-2 italic uppercase">{label}</p>
     </div>
   );
 }
@@ -414,7 +710,7 @@ function ModernCard({ label, value, icon, color, onClick }) {
 function WideCard({ label, value, sub, icon, color, onClick }) {
     return (
       <div onClick={onClick} className={`${color} p-8 rounded-[35px] shadow-xl flex items-center justify-between group overflow-hidden active:scale-95 transition-all cursor-pointer`}>
-         <div className="relative z-10 font-black uppercase italic italic font-black uppercase">
+         <div className="relative z-10 font-black uppercase italic">
             <p className="text-[8.5px] opacity-40 mb-2 uppercase tracking-[0.2em]">{label}</p>
             <h4 className="text-2xl font-black uppercase tracking-tighter italic">{value}</h4>
             <p className="text-[9px] opacity-20 uppercase tracking-[0.4em] font-mono mt-2 italic">{sub}</p>
@@ -422,4 +718,22 @@ function WideCard({ label, value, sub, icon, color, onClick }) {
          <div className="bg-white/10 p-5 rounded-full transition-all group-hover:rotate-12">{icon}</div>
       </div>
     );
+}
+
+function DetailField({ label, value, icon }) {
+    return (
+        <div className="space-y-3">
+            <label className="flex items-center gap-3 text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">{icon} {label}</label>
+            <div className="w-full bg-white border-2 border-slate-50 px-6 py-4.5 rounded-[22px] shadow-sm font-bold text-slate-800 text-[15px]">{value}</div>
+        </div>
+    )
+}
+
+function UserPlus({ size, className }) {
+    return (
+        <div className={`relative ${className}`}>
+            <User size={size} />
+            <Plus size={size / 2} className="absolute -top-1 -right-1" />
+        </div>
+    )
 }

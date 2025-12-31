@@ -1,16 +1,18 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { supabase } from './supabaseClient';
-import { ShieldCheck, LogOut, Loader2 } from 'lucide-react';
+import { supabase } from "./supabaseClient";
+import { ShieldCheck, LogOut, Cpu } from 'lucide-react';
+
+// IMPORTING MODULAR PAGES
 import Login from './pages/Login';
-import AdminDashboard from './pages/AdminDashboard';
 import EmployeeDashboard from './pages/EmployeeDashboard';
+import AdminDashboard from './pages/admin/index'; 
 
 function App() {
   const [session, setSession] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // CORE ROLE FETCH PROTOCOL
+  // CORE ROLE FETCH PROTOCOL: THE HQ HANDSHAKE
   const fetchRole = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase
@@ -19,12 +21,17 @@ function App() {
         .eq('id', userId)
         .single();
 
-      if (error) {
-        // Fallback for missing profile row
+      if (error || !data) {
+        // Fallback for missing profile row: Personnel Hub Registry Entry Required
         setRole('employee'); 
       } else {
-        const dbRole = data?.role?.toLowerCase();
-        // SIR RABNAWAZ AUTHORIZATION GATE
+        const dbRole = data?.role?.toLowerCase() || 'employee';
+        
+        /* 
+           THE GATEKEEPER LOGIC:
+           1. Admins skip approval (Root Auth).
+           2. Employees/PMs must have is_approved: true to pass.
+        */
         if (dbRole !== 'admin' && data?.is_approved === false) {
            setRole('pending'); 
         } else {
@@ -32,9 +39,11 @@ function App() {
         }
       }
     } catch (err) {
+      console.error("GATEKEEPER_CRITICAL_FAIL:", err);
       setRole('employee');
     } finally {
-      setLoading(false);
+      // Small delay for psychological high-tech initialization
+      setTimeout(() => setLoading(false), 1200);
     }
   }, []);
 
@@ -60,14 +69,8 @@ function App() {
       }
     });
 
-    // 3. FORCE-TIMEOUT SAFETY (Stops Infinite Sync screen after 3 seconds)
-    const safetyHalt = setTimeout(() => {
-      if (loading) setLoading(false);
-    }, 3000);
-
     return () => {
       subscription.unsubscribe();
-      clearTimeout(safetyHalt);
     };
   }, [fetchRole]);
 
@@ -80,46 +83,56 @@ function App() {
     setLoading(false);
   };
 
-  // SYNC LOADING SCREEN (BOLD-ITALIC-UPPERCASE PROTOCOL)
+  // SYNC LOADING SCREEN (0.8 DENSITY PROTOCOL)
   if (loading) return (
-    <div className="min-h-screen bg-[#0c3740] flex flex-col items-center justify-center font-sans overflow-hidden">
-       <div className="flex flex-col items-center gap-6">
-          <div className="size-16 border-t-4 border-l-4 border-[#2b945f] rounded-full animate-spin"></div>
-          <div className="text-white text-xl font-black uppercase tracking-[0.4em] italic animate-pulse">Code Nest Synchronizing...</div>
+    <div className="min-h-screen bg-[#0c3740] flex flex-col items-center justify-center font-black italic uppercase overflow-hidden">
+       <div className="flex flex-col items-center gap-8 animate-in fade-in duration-1000">
+          <div className="relative">
+             <Cpu size={80} className="text-[#2b945f] animate-pulse" />
+             <div className="absolute inset-0 border-t-4 border-[#2b945f] rounded-full animate-spin"></div>
+          </div>
+          <div className="text-white text-3xl tracking-[0.5em]">
+            Code Nest <span className="text-[#2b945f]">Syncing...</span>
+          </div>
        </div>
-       <p className="mt-10 text-[8px] text-white/20 font-black italic tracking-widest uppercase">Encryption standard Tier-4 Handshake in Progress</p>
+       <p className="mt-16 text-[10px] text-white/20 tracking-[0.8em]">
+          Initializing Node-Linkage • Terminal 1.04 • Root Active
+       </p>
     </div>
   );
 
-  // AUTHENTICATION GATE
+  // 1. LOGIN GATE
   if (!session) return <Login />;
 
-  // PENDING AUTHORIZATION HUB
+  // 2. THE HANDSHAKE SCREEN (RESTRICTED ACCESS)
   if (role === 'pending') return (
-    <div className="min-h-screen bg-[#0c3740] flex flex-col items-center justify-center p-6 text-center font-sans selection:bg-[#2b945f] selection:text-white">
-       <div className="bg-white w-full max-w-[340px] rounded-[45px] p-10 shadow-[0_40px_100px_rgba(0,0,0,0.8)] border-4 border-white/5 animate-in zoom-in duration-500" style={{ zoom: '0.8' }}>
-          <div className="size-20 bg-[#2b945f]/10 text-[#2b945f] rounded-[24px] flex items-center justify-center mx-auto mb-8 border border-[#2b945f]/20 animate-bounce">
-             <ShieldCheck size={40} />
+    <div className="min-h-screen bg-[#0c3740] flex flex-col items-center justify-center p-6 text-center font-black italic uppercase">
+       <div className="bg-white w-full max-w-[420px] rounded-[40px] p-16 shadow-[0_50px_100px_rgba(0,0,0,0.8)] border-b-[12px] border-[#2b945f] transition-transform hover:scale-105" style={{ zoom: '0.8' }}>
+          <div className="size-24 bg-red-600/10 text-red-600 rounded-[30px] flex items-center justify-center mx-auto mb-10 border-4 border-slate-50">
+             <ShieldCheck size={48} className="animate-bounce" />
           </div>
-          <h2 className="text-2xl font-black italic uppercase tracking-tighter text-[#0c3740] mb-4 leading-tight">Access Restricted</h2>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] leading-relaxed italic mb-10">
-            Node Identity Detected. Sir Rabnawaz has been notified of your presence. Terminal will activate automatically upon personnel ID Authorization.
+          <h2 className="text-4xl text-[#0c3740] mb-8 leading-tight tracking-tighter">Identity Pending</h2>
+          <p className="text-[12px] text-slate-400 tracking-[0.2em] leading-loose mb-12">
+            Entrance is gated by Root Administrator. Sir Rabnawaz has received your signal. Access granted upon Hub clearance.
           </p>
           <button 
             onClick={terminateSession} 
-            className="w-full py-5 bg-[#0c3740] text-white rounded-[22px] font-black uppercase text-[10px] tracking-[0.2em] italic shadow-xl shadow-[#0c3740]/30 hover:bg-[#2b945f] transition-all active:scale-95 flex items-center justify-center gap-3"
+            className="w-full py-6 bg-red-600 text-white rounded-[20px] text-[12px] tracking-[0.3em] shadow-xl hover:brightness-110 active:translate-y-2 transition-all flex items-center justify-center gap-4"
           >
-            <LogOut size={16}/> Terminate Link
+            <LogOut size={18}/> Kill Session
           </button>
        </div>
-       <p className="mt-8 text-[8px] font-black text-white/20 uppercase tracking-[0.4em] italic">Code Nest Remote Security Terminal</p>
     </div>
   );
 
-  // CORE NAVIGATION ROUTING
+  // 3. CORE NAVIGATION (ROUTING LAYER)
   return (
     <>
-      {role === 'admin' ? <AdminDashboard /> : <EmployeeDashboard />}
+      {role === 'admin' ? (
+        <AdminDashboard /> 
+      ) : (
+        <EmployeeDashboard session={session} terminateSession={terminateSession} />
+      )}
     </>
   );
 }

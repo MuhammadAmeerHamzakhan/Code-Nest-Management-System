@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from "../../supabaseClient";
 import { 
-  Plus, Search, Filter, Trash2, 
-  Clock, X, ChevronDown, Calendar,
-  CheckCircle2, AlertCircle, Layout,
-  MoreVertical, Building2, User as UserIcon
+  Plus, Search, Trash2, X, ChevronDown, 
+  Calendar, Clock, User, Briefcase, 
+  Layers, AlertTriangle, CheckCircle2, Type
 } from 'lucide-react';
 
 const COLUMNS = [
@@ -25,22 +24,22 @@ export default function TasksCenter() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Form State - EXACTLY matching your screenshot
+  // Enhanced Form State
   const [newTask, setNewTask] = useState({
     title: '', 
     project_id: '', 
     description: '',
     assigned_to: '', 
-    status: 'To Do', 
+    status: 'To Do', // Can now be chosen on creation
     priority: 'Medium', 
     task_type: 'One-time',
     deadline: ''
   });
 
-  // BRAIN: Real-time Fetch
+  // BRAIN: Real-time Fetch & Drag Sync
   useEffect(() => {
     fetchData();
-    const channel = supabase.channel('tasks-hq-live')
+    const channel = supabase.channel('tasks-kanban-v2')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => fetchData())
       .subscribe();
     return () => supabase.removeChannel(channel);
@@ -56,10 +55,42 @@ export default function TasksCenter() {
       setProjects(prj || []);
       setStaff(stf || []);
     } catch (err) {
-      console.error(err);
+      console.error("Task Matrix Fetch Error:", err);
     } finally {
-      setLoading(false);
+      setTimeout(() => setLoading(false), 400); // Smooth hydration
     }
+  };
+
+  // --- DRAG & DROP LOGIC ---
+  const handleDragStart = (e, taskId) => {
+    e.dataTransfer.setData("taskId", taskId);
+    e.target.style.opacity = '0.5';
+  };
+
+  const handleDragEnd = (e) => {
+    e.target.style.opacity = '1';
+  };
+
+  const handleOnDrop = async (e, targetStatus) => {
+    const taskId = e.dataTransfer.getData("taskId");
+    
+    // Optimistic UI Update
+    setTasks(prev => prev.map(t => t.id == taskId ? { ...t, status: targetStatus } : t));
+
+    // Database Handshake
+    const { error } = await supabase
+      .from('tasks')
+      .update({ status: targetStatus })
+      .eq('id', taskId);
+
+    if (error) {
+      console.error("Drop sync error:", error.message);
+      fetchData(); // Rollback if error occurs
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault(); // Required for drop to work
   };
 
   const handleCreateTask = async (e) => {
@@ -71,21 +102,20 @@ export default function TasksCenter() {
         setNewTask({ title: '', project_id: '', description: '', assigned_to: '', status: 'To Do', priority: 'Medium', task_type: 'One-time', deadline: '' });
         fetchData();
       } else {
-        alert("Error: " + error.message);
+        alert("Creation Fail: " + error.message);
       }
     } catch (err) {
-      alert("Something went wrong!");
+      alert("Matrix link severed. Try again.");
     }
   };
 
   const deleteTask = async (id) => {
-    if (window.confirm("Purge this task?")) {
+    if (window.confirm("Purge this task from the matrix?")) {
       await supabase.from('tasks').delete().eq('id', id);
       fetchData();
     }
   };
 
-  // Logic: Real Search and Filter
   const filtered = tasks.filter(t => {
     const matchesSearch = t.title?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
@@ -93,79 +123,120 @@ export default function TasksCenter() {
   });
 
   if (loading) return (
-    <div className="flex h-[60vh] items-center justify-center w-full bg-[#F8FAFC]">
-       <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-[#6366F1]"></div>
+    <div className="flex h-screen items-center justify-center w-full bg-[#F8FAFC]">
+       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-[#6366F1]"></div>
     </div>
   );
 
   return (
-    <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8 animate-in fade-in duration-500 font-sans tracking-tight bg-[#F8FAFC]">
+    <div className="p-8 max-w-[1600px] mx-auto min-h-screen bg-[#F8FAFC] font-sans">
       
-      {/* 1. HEADER ROW */}
-      <div className="flex justify-between items-center">
+      {/* HEADER SECTION */}
+      <div className="flex justify-between items-center mb-8">
         <div>
-           <h1 className="text-2xl font-bold text-slate-800">Tasks</h1>
-           <p className="text-slate-500 text-sm mt-1 font-medium">Manage and track task progress</p>
+           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Tasks</h1>
+           <p className="text-slate-500 text-sm mt-1 font-medium">Coordinate deliverables across the Project Matrix</p>
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="bg-[#6366f1] hover:bg-[#585af2] text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg flex items-center gap-2 transition-all active:scale-95"
+          className="bg-[#6366F1] hover:bg-[#585af2] text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg flex items-center gap-2 active:scale-95 transition-all"
         >
-          <Plus size={20} strokeWidth={3} /> Add Task
+          <Plus size={18} strokeWidth={3} /> Add Task
         </button>
       </div>
 
-      {/* 2. FILTER BOXES */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-wrap gap-8">
-        <ColumnFilter label="Status" opts={['To Do', 'In Progress', 'Blocked', 'Done']} onChange={setStatusFilter} />
-        <ColumnFilter label="Priority" opts={['High', 'Medium', 'Low']} />
-        <ColumnFilter label="Assignee" opts={staff.map(s => s.full_name)} />
+      {/* FILTER PANEL */}
+      <div className="flex gap-4 mb-8">
+        <div className="flex-1 relative group">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500" size={18} />
+          <input 
+            className="w-full bg-white border border-slate-100 py-3 pl-11 pr-4 rounded-xl text-sm outline-none focus:border-indigo-400 shadow-sm"
+            placeholder="Search tasks..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <div className="flex gap-4">
+          <FilterDropdown label="Assignee" opts={staff.map(s => s.full_name)} />
+          <FilterDropdown label="Priority" opts={['High', 'Medium', 'Low']} />
+        </div>
       </div>
 
-      {/* 3. STAT CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard label="Total Tasks" value={tasks.length} color="text-slate-800" />
-        <StatCard label="In Progress" value={tasks.filter(t=>t.status==='In Progress').length} color="text-blue-500" />
-        <StatCard label="Blocked" value={tasks.filter(t=>t.status==='Blocked').length} color="text-red-500" />
-        <StatCard label="Overdue" value={0} color="text-red-700" />
-        <StatCard label="Completed" value={tasks.filter(t=>t.status==='Done').length} color="text-emerald-500" />
+      {/* STAT STRIP */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-10">
+        <StatTile label="Matrix Load" value={tasks.length} color="text-slate-800" />
+        <StatTile label="Active Sprint" value={tasks.filter(t=>t.status==='In Progress').length} color="text-blue-500" />
+        <StatTile label="Blocked" value={tasks.filter(t=>t.status==='Blocked').length} color="text-red-500" />
+        <StatTile label="Overdue" value={tasks.filter(t => new Date(t.deadline) < new Date() && t.status !== 'Done').length} color="text-red-800" />
+        <StatTile label="Archive" value={tasks.filter(t=>t.status==='Done').length} color="text-emerald-500" />
       </div>
 
-      {/* 4. KANBAN GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 min-h-[550px]">
+      {/* KANBAN KINETIC BOARD */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
         {COLUMNS.map(col => (
-           <div key={col.id} className="bg-slate-50/50 rounded-3xl border border-slate-200/40 flex flex-col p-2 shadow-inner">
-             <div className="p-4 flex justify-between items-center mb-2">
-                <h3 className="font-bold text-slate-600 text-[13px]">{col.label}</h3>
-                <span className="bg-white text-[11px] font-bold text-slate-300 w-6 h-6 flex items-center justify-center rounded-full border border-slate-100">
+           <div 
+             key={col.id} 
+             onDrop={(e) => handleOnDrop(e, col.id)} 
+             onDragOver={handleDragOver}
+             className="bg-slate-100/40 rounded-[32px] border border-slate-200/50 p-2 min-h-[600px] flex flex-col transition-colors hover:bg-slate-100/60"
+           >
+             <div className="p-4 flex justify-between items-center mb-4 px-6">
+                <h3 className="font-extrabold text-slate-500 text-xs uppercase tracking-widest">{col.label}</h3>
+                <span className="bg-white px-2 py-0.5 rounded-full text-[10px] font-black text-slate-400 border border-slate-100">
                    {filtered.filter(t => t.status === col.id).length}
                 </span>
              </div>
              
-             <div className="space-y-4 px-2 overflow-y-auto max-h-[600px] pb-10">
+             <div className="space-y-4 px-2 overflow-y-auto pb-10">
                {filtered.filter(t => t.status === col.id).length === 0 ? (
-                  <p className="text-[10px] font-bold uppercase text-slate-300 text-center py-20 tracking-tighter opacity-60">No tasks in {col.label.toLowerCase()}</p>
+                  <div className="py-20 flex flex-col items-center opacity-30 text-center">
+                    <Layers size={28} className="text-slate-300 mb-2"/>
+                    <p className="text-[10px] font-bold uppercase tracking-widest">Zone Empty</p>
+                  </div>
                ) : (
                  filtered.filter(t => t.status === col.id).map(task => (
-                   <div key={task.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm group hover:shadow-md transition-shadow cursor-pointer relative">
-                     <div className="flex justify-between items-center mb-3">
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-tight ${task.priority === 'High' ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-400'}`}>
+                   <div 
+                     key={task.id} 
+                     draggable 
+                     onDragStart={(e) => handleDragStart(e, task.id)}
+                     onDragEnd={handleDragEnd}
+                     className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm hover:shadow-lg transition-all cursor-grab active:cursor-grabbing group border-b-[3px] border-b-slate-100/50"
+                   >
+                     {/* CARD TOP */}
+                     <div className="flex justify-between items-start mb-4">
+                        <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest 
+                          ${task.priority === 'High' ? 'bg-red-50 text-red-500' : 'bg-slate-100 text-slate-400'}`}>
                            {task.priority}
                         </span>
-                        <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover:opacity-100 text-slate-200 hover:text-red-500"><Trash2 size={14}/></button>
+                        <div className="flex gap-2">
+                           <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover:opacity-100 text-slate-200 hover:text-red-500 transition-all active:scale-90"><Trash2 size={14}/></button>
+                        </div>
                      </div>
-                     <p className="text-sm font-bold text-slate-800 leading-snug">{task.title}</p>
+
+                     {/* TASK CONTENT */}
+                     <p className="text-sm font-extrabold text-slate-800 leading-snug mb-2">{task.title}</p>
+                     <p className="text-[11px] font-medium text-slate-400 line-clamp-1 mb-4">{task.description || "No detail provided"}</p>
                      
-                     <div className="mt-5 pt-3 border-t border-slate-50 flex items-center justify-between">
+                     <div className="text-[10px] font-black text-indigo-400 mb-6 uppercase tracking-widest">
+                       {projects.find(p => p.id == task.project_id)?.project_name || "Internal Operational"}
+                     </div>
+
+                     {/* CARD FOOTER */}
+                     <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                           <div className="w-6 h-6 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[10px] text-[#6366f1] font-bold uppercase tracking-tighter">
-                              {staff.find(s=>s.id === task.assigned_to)?.full_name?.charAt(0) || '?'}
+                           <div className="w-7 h-7 rounded-xl bg-[#6366F1] flex items-center justify-center text-[10px] text-white font-bold uppercase">
+                              {staff.find(s=>s.id === task.assigned_to)?.full_name?.charAt(0) || 'A'}
                            </div>
-                           <span className="text-[10px] text-slate-400 font-medium">
-                              {staff.find(s=>s.id === task.assigned_to)?.full_name || 'Unassigned'}
+                           <span className="text-[11px] font-bold text-slate-700 tracking-tight">
+                              {staff.find(s=>s.id === task.assigned_to)?.full_name || 'System'}
                            </span>
                         </div>
-                        {task.deadline && <span className="text-[9px] font-bold text-slate-300 uppercase italic tracking-tighter">{task.deadline}</span>}
+                        {task.deadline && (
+                          <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tighter 
+                             ${new Date(task.deadline) < new Date() && task.status !== 'Done' ? 'text-red-500' : 'text-slate-400'}`}>
+                             {new Date(task.deadline) < new Date() && task.status !== 'Done' ? 'Overdue' : ''} {new Date(task.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </div>
+                        )}
                      </div>
                    </div>
                  ))
@@ -175,78 +246,77 @@ export default function TasksCenter() {
         ))}
       </div>
 
-      {/* 5. CREATE MODAL - EXACTLY MATCHING YOUR SCREENSHOT IMAGE */}
+      {/* CREATE TASK MODAL (SCREENSHOT ACCURATE) */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-           <div className="bg-white w-full max-w-2xl rounded-[30px] shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden border border-slate-200">
-              <div className="p-6 border-b border-slate-50 flex justify-between items-center">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+           <div className="bg-white w-full max-w-2xl rounded-[32px] shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden border border-white">
+              <header className="px-8 py-5 border-b border-slate-100 flex justify-between items-center bg-white">
                  <h2 className="text-xl font-bold text-slate-800 tracking-tight">Create New Task</h2>
-                 <X onClick={() => setIsModalOpen(false)} size={18} className="text-slate-400 cursor-pointer hover:text-slate-800 transition-colors" />
-              </div>
+                 <X onClick={() => setIsModalOpen(false)} size={18} className="text-slate-300 cursor-pointer hover:text-slate-800" />
+              </header>
 
-              <form onSubmit={handleCreateTask} className="p-8 space-y-6">
+              <form onSubmit={handleCreateTask} className="p-10 space-y-6 max-h-[80vh] overflow-y-auto custom-scrollbar">
                  
-                 {/* Project Selection Dropdown */}
                  <div className="space-y-2">
-                    <label className="text-[13px] font-bold text-slate-500 ml-1">Project</label>
+                    <label className="text-[12px] font-bold text-slate-500 ml-1">Assign to Project</label>
                     <div className="relative">
-                       <select required className="w-full bg-white border border-slate-200 p-3.5 rounded-xl text-sm appearance-none outline-none focus:border-[#6366f1]" onChange={e => setNewTask({...newTask, project_id: e.target.value})}>
-                          <option value="">Select a project</option>
+                       <select required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-sm appearance-none outline-none focus:border-[#6366F1] transition-all" value={newTask.project_id} onChange={e => setNewTask({...newTask, project_id: e.target.value})}>
+                          <option value="">Search internal matrix projects...</option>
                           {projects.map(p => <option key={p.id} value={p.id}>{p.project_name}</option>)}
                        </select>
-                       <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                       <ChevronDown size={14} className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400" />
                     </div>
                  </div>
 
                  <div className="space-y-2">
-                    <label className="text-[13px] font-bold text-slate-500 ml-1">Title</label>
-                    <input required className="w-full border border-slate-200 p-3.5 rounded-xl text-sm outline-none focus:border-[#6366f1] placeholder:text-slate-300" onChange={e => setNewTask({...newTask, title: e.target.value})} placeholder="What needs to be done?" />
+                    <label className="text-[12px] font-bold text-slate-500 ml-1">Task Identification</label>
+                    <input required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-sm outline-none focus:border-[#6366F1] focus:bg-white transition-all shadow-inner" placeholder="E.g., Configure Real-time Listeners" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} />
                  </div>
 
                  <div className="space-y-2">
-                    <label className="text-[13px] font-bold text-slate-500 ml-1">Description</label>
-                    <textarea className="w-full border border-slate-200 p-3.5 rounded-xl text-sm min-h-[100px] outline-none focus:border-[#6366f1] transition-all resize-none" onChange={e => setNewTask({...newTask, description: e.target.value})} />
+                    <label className="text-[12px] font-bold text-slate-500 ml-1">Internal Deliverable Description</label>
+                    <textarea rows="3" className="w-full bg-slate-50 border border-slate-100 p-5 rounded-2xl text-sm outline-none focus:border-[#6366F1] focus:bg-white resize-none shadow-inner" placeholder="Specify technical steps or expectations..." value={newTask.description} onChange={e => setNewTask({...newTask, description: e.target.value})} />
                  </div>
 
                  <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2 relative">
-                       <label className="text-[13px] font-bold text-slate-500 ml-1">Priority</label>
-                       <select className="w-full bg-white border border-slate-200 p-3.5 rounded-xl text-sm appearance-none outline-none" onChange={e => setNewTask({...newTask, priority: e.target.value})} value={newTask.priority}>
+                       <label className="text-[12px] font-bold text-slate-500 ml-1">Execution Priority</label>
+                       <select className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-sm appearance-none outline-none" value={newTask.priority} onChange={e => setNewTask({...newTask, priority: e.target.value})}>
                           <option>Low</option><option>Medium</option><option>High</option>
                        </select>
-                       <ChevronDown size={14} className="absolute right-4 top-[47px] text-slate-400" />
+                       <ChevronDown size={14} className="absolute right-5 top-[50px] text-slate-400" />
                     </div>
                     <div className="space-y-2 relative">
-                       <label className="text-[13px] font-bold text-slate-500 ml-1">Type</label>
-                       <select className="w-full bg-white border border-slate-200 p-3.5 rounded-xl text-sm appearance-none outline-none" onChange={e => setNewTask({...newTask, task_type: e.target.value})}>
-                          <option>One-time</option><option>Recurring</option>
+                       <label className="text-[12px] font-bold text-slate-500 ml-1">Deployment Phase (Category)</label>
+                       <select className="w-full bg-indigo-50 border border-indigo-100 p-4 rounded-2xl text-sm appearance-none outline-none font-bold text-indigo-600 shadow-sm" value={newTask.status} onChange={e => setNewTask({...newTask, status: e.target.value})}>
+                          {COLUMNS.map(col => <option key={col.id} value={col.id}>{col.label}</option>)}
                        </select>
-                       <ChevronDown size={14} className="absolute right-4 top-[47px] text-slate-400" />
+                       <ChevronDown size={14} className="absolute right-5 top-[50px] text-indigo-300" />
                     </div>
                  </div>
 
-                 <div className="grid grid-cols-2 gap-6 pb-2">
+                 <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2 relative">
-                       <label className="text-[13px] font-bold text-slate-500 ml-1">Assignee</label>
-                       <select required className="w-full bg-white border border-slate-200 p-3.5 rounded-xl text-sm appearance-none outline-none" onChange={e => setNewTask({...newTask, assigned_to: e.target.value})}>
-                          <option value="">Select an option</option>
+                       <label className="text-[12px] font-bold text-slate-500 ml-1">Assigned Unit</label>
+                       <select required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-sm appearance-none outline-none focus:border-[#6366f1]" value={newTask.assigned_to} onChange={e => setNewTask({...newTask, assigned_to: e.target.value})}>
+                          <option value="">Select team member...</option>
                           {staff.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
                        </select>
-                       <ChevronDown size={14} className="absolute right-4 top-[47px] text-slate-400" />
+                       <ChevronDown size={14} className="absolute right-5 top-[50px] text-slate-400" />
                     </div>
-                    <div className="space-y-2 relative">
-                       <label className="text-[13px] font-bold text-slate-500 ml-1">Due Date</label>
-                       <div className="relative">
-                          <input type="date" required className="w-full border border-slate-200 p-3.5 rounded-xl text-sm outline-none" onChange={e => setNewTask({...newTask, deadline: e.target.value})} />
-                          <Calendar size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <div className="space-y-2">
+                       <label className="text-[12px] font-bold text-slate-500 ml-1">Cycle Deadline</label>
+                       <div className="relative group">
+                          <input type="date" required onClick={(e) => e.target.showPicker()} className="w-full bg-slate-50 border border-slate-100 p-4 rounded-2xl text-sm outline-none focus:border-[#6366f1] appearance-none" value={newTask.deadline} onChange={e => setNewTask({...newTask, deadline: e.target.value})} />
+                          <Calendar size={14} className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300" />
                        </div>
                     </div>
                  </div>
 
-                 <div className="pt-6 border-t border-slate-50 flex justify-end gap-3">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-8 py-2.5 bg-slate-50 text-slate-400 rounded-xl font-bold text-[13px] hover:bg-slate-100 transition-all">Cancel</button>
-                    <button type="submit" className="px-8 py-2.5 bg-[#6366f1] text-white rounded-xl font-bold text-[13px] shadow-lg shadow-indigo-100 active:scale-95 transition-all">Create Task</button>
-                 </div>
+                 <footer className="pt-10 border-t border-slate-50 flex justify-end gap-3 mt-4">
+                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-10 py-3 rounded-2xl bg-slate-50 text-slate-400 font-bold text-[10px] uppercase tracking-[2px] transition-colors hover:bg-slate-100">Cancel</button>
+                    <button type="submit" className="px-10 py-3 rounded-2xl bg-[#6366F1] text-white font-black text-[10px] uppercase tracking-[2px] shadow-2xl shadow-indigo-200 active:scale-95 transition-all">Create Task</button>
+                 </footer>
               </form>
            </div>
         </div>
@@ -257,26 +327,23 @@ export default function TasksCenter() {
 
 // ---------------- STYLING COMPONENTS ---------------- //
 
-function StatCard({ label, value, color }) {
+function StatTile({ label, value, color }) {
   return (
-    <div className="bg-white p-7 rounded-[22px] border border-slate-100 shadow-sm flex flex-col items-center justify-center space-y-2 text-center transition-all hover:shadow-md">
-       <h4 className={`text-4xl font-extrabold ${color}`}>{value}</h4>
-       <p className="text-[12px] font-bold text-slate-400 tracking-widest uppercase">{label}</p>
+    <div className="bg-white p-7 rounded-[32px] border border-slate-100 shadow-sm flex flex-col items-center justify-center space-y-2 text-center transition-all hover:shadow-xl hover:-translate-y-1">
+       <h4 className={`text-4xl font-black ${color} tracking-tighter leading-none`}>{value}</h4>
+       <p className="text-[10px] font-bold text-slate-400 tracking-[2px] uppercase">{label}</p>
     </div>
   );
 }
 
-function ColumnFilter({ label, opts, onChange }) {
+function FilterDropdown({ label, opts }) {
    return (
-    <div className="space-y-1">
-       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">{label}</p>
-       <div className="relative">
-         <select className="appearance-none border border-slate-200 px-4 py-2 pr-12 rounded-xl text-sm font-semibold text-slate-700 outline-none min-w-[160px] cursor-pointer" onChange={(e) => onChange && onChange(e.target.value)}>
-            <option value="all">All {label}s</option>
-            {opts.map((o, i) => <option key={i} value={o}>{o}</option>)}
-         </select>
-         <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" />
-       </div>
+    <div className="relative">
+       <select className="appearance-none bg-white border border-slate-100 px-6 py-3.5 pr-12 rounded-xl text-xs font-black text-slate-600 outline-none min-w-[160px] cursor-pointer shadow-sm hover:border-indigo-400 transition-colors">
+          <option value="all">ALL {label.toUpperCase()}S</option>
+          {opts.map((o, i) => <option key={i} value={o}>{o}</option>)}
+       </select>
+       <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" />
     </div>
    );
 }

@@ -3,7 +3,8 @@ import { supabase } from "../../supabaseClient";
 import { 
   Plus, Search, X, ChevronDown, 
   UserCircle2, Mail, Trash2, Edit3, 
-  CheckCircle2, AlertCircle, ShieldCheck
+  ShieldCheck, ShieldAlert, Type, ListFilter,
+  CheckCircle2, Clock, AlertCircle, Layout
 } from 'lucide-react';
 
 export default function TeamSection() {
@@ -12,10 +13,12 @@ export default function TeamSection() {
   
   // UI States
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [isCustomRole, setIsCustomRole] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
 
-  // Modal Form State (Exactly matching Screenshot #2)
+  // Form State
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
@@ -23,7 +26,9 @@ export default function TeamSection() {
     is_active: true
   });
 
-  // REAL-TIME SYNC ENGINE
+  const standardRoles = ['Developer', 'Project Manager', 'Designer', 'QA Engineer', 'Sales', 'Marketing'];
+
+  // --- BRAIN: REAL-TIME SYNC ENGINE ---
   useEffect(() => {
     fetchMembers();
     const channel = supabase.channel('team-sync')
@@ -44,18 +49,32 @@ export default function TeamSection() {
     setLoading(false);
   };
 
-  const handleAddMember = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const { error } = await supabase.from('profiles').insert([formData]);
-      if (!error) {
-        setIsModalOpen(false);
-        setFormData({ full_name: '', email: '', role: 'Developer', is_active: true });
-        fetchMembers();
+      if (editingId) {
+        await supabase.from('profiles').update(formData).eq('id', editingId);
       } else {
-        alert(error.message);
+        const { error } = await supabase.from('profiles').insert([formData]);
+        if (error) throw error;
       }
-    } catch (err) { alert("Failed to connect to database."); }
+      closeModal();
+      fetchMembers();
+    } catch (err) { 
+      alert("Matrix Error: " + err.message); 
+    }
+  };
+
+  const handleEdit = (member) => {
+    setEditingId(member.id);
+    setFormData({
+      full_name: member.full_name,
+      email: member.email,
+      role: member.role,
+      is_active: member.is_active
+    });
+    setIsCustomRole(!standardRoles.includes(member.role));
+    setIsModalOpen(true);
   };
 
   const deleteMember = async (id) => {
@@ -63,6 +82,13 @@ export default function TeamSection() {
       await supabase.from('profiles').delete().eq('id', id);
       fetchMembers();
     }
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingId(null);
+    setIsCustomRole(false);
+    setFormData({ full_name: '', email: '', role: 'Developer', is_active: true });
   };
 
   const filtered = members.filter(m => {
@@ -78,28 +104,28 @@ export default function TeamSection() {
   );
 
   return (
-    <div className="p-8 max-w-[1400px] mx-auto space-y-8 animate-in fade-in duration-500 font-sans tracking-tight bg-[#F8FAFC] min-h-screen">
+    <div className="p-8 max-w-[1400px] mx-auto min-h-screen bg-[#F8FAFC] animate-in fade-in duration-500 font-sans">
       
       {/* 1. HEADER SECTION */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center mb-6">
         <div>
-           <h1 className="text-2xl font-bold text-slate-800">Team</h1>
+           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Team</h1>
            <p className="text-slate-500 text-sm mt-1 font-medium">Manage team members and their roles</p>
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="bg-[#6366f1] hover:bg-[#585af2] text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg flex items-center gap-2 transition-all active:scale-95"
+          className="bg-[#6366F1] hover:bg-[#585af2] text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg flex items-center gap-2 active:scale-95 transition-all"
         >
-          <Plus size={20} strokeWidth={3} /> Add Member
+          <Plus size={18} strokeWidth={3} /> Add Member
         </button>
       </div>
 
-      {/* 2. FILTER & SEARCH (Pixel Perfect to Screenshot #1) */}
-      <div className="flex gap-4 mb-4">
+      {/* 2. SEARCH & FILTER ROW */}
+      <div className="flex flex-col md:flex-row gap-4 mb-8">
          <div className="flex-1 relative group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500" size={18} />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input 
-              className="w-full bg-white border border-slate-200 py-3 pl-11 pr-4 rounded-xl text-sm outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-[#6366f1] transition-all"
+              className="w-full bg-white border border-slate-100 py-3.5 pl-11 pr-4 rounded-xl text-sm focus:border-indigo-400 outline-none transition-all shadow-sm"
               placeholder="Search team members..."
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -108,148 +134,140 @@ export default function TeamSection() {
             <select 
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="appearance-none bg-white border border-slate-200 py-3 px-6 pr-12 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:border-indigo-500 min-w-[180px]"
+              className="appearance-none bg-white border border-slate-100 py-3.5 px-6 pr-12 rounded-xl text-sm font-semibold text-slate-700 outline-none cursor-pointer min-w-[180px]"
             >
                <option value="all">All Roles</option>
-               <option>Developer</option>
-               <option>Project Manager</option>
-               <option>Designer</option>
+               {standardRoles.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
-            <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
          </div>
       </div>
 
-      {/* 3. CENTERED STATS BOXES */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      {/* 3. STATS STRIP */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
         <StatCard label="Total Members" value={members.length} />
-        <StatCard label="Active" value={members.filter(m=>m.is_active).length} color="text-emerald-500" />
-        <StatCard label="Developers" value={members.filter(m=>m.role==='Developer').length} color="text-indigo-500" />
-        <StatCard label="Project Managers" value={members.filter(m=>m.role==='Project Manager').length} color="text-[#A855F7]" />
+        <StatCard label="Active" value={members.filter(m=>m.is_active).length} color="text-slate-800" />
+        <StatCard label="Developers" value={members.filter(m=>m.role==='Developer').length} color="text-slate-800" />
+        <StatCard label="Project Managers" value={members.filter(m=>m.role==='Project Manager').length} color="text-slate-800" />
       </div>
 
-      {/* 4. CONTENT LIST AREA */}
-      <div className="bg-white border border-slate-200 rounded-[35px] min-h-[450px] overflow-hidden flex flex-col shadow-sm">
+      {/* 4. TEAM CARD GRID */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {filtered.length === 0 ? (
-          /* EMPTY STATE ILLUSTRATION (Matches screenshot) */
-          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center animate-in zoom-in-95">
-             <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mb-6 border border-slate-100 shadow-inner">
-                <UserCircle2 size={40} className="text-slate-300" />
-             </div>
-             <h3 className="text-lg font-bold text-slate-800">No team members found</h3>
-             <p className="text-sm text-slate-500 mt-2 mb-8 tracking-tight">Add your first team member to get started</p>
-             <button 
-                onClick={() => setIsModalOpen(true)}
-                className="bg-[#6366f1] hover:bg-[#585af2] text-white px-8 py-3 rounded-xl font-bold text-sm shadow-md"
-             >
-                Add Member
-             </button>
+          <div className="col-span-full py-20 bg-white rounded-[32px] border border-slate-100 flex flex-col items-center">
+             <Layout size={40} className="text-slate-100 mb-2"/>
+             <p className="text-slate-400 font-bold">No results match your criteria.</p>
           </div>
         ) : (
-          /* TABLE VIEW FOR LIVE DATA */
-          <div className="overflow-x-auto p-4">
-             <table className="w-full text-left">
-               <thead className="bg-slate-50/50">
-                 <tr className="border-b border-slate-100">
-                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Team Member</th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Email</th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Role</th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Action</th>
-                 </tr>
-               </thead>
-               <tbody className="divide-y divide-slate-50">
-                 {filtered.map(m => (
-                   <tr key={m.id} className="hover:bg-slate-50/50 group transition-all">
-                      <td className="px-6 py-5">
-                         <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center font-bold text-indigo-500 text-sm">
-                               {m.full_name?.charAt(0)}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-bold text-slate-800 text-sm">{m.full_name}</p>
-                              {m.is_active && <ShieldCheck size={14} className="text-emerald-500" />}
-                            </div>
-                         </div>
-                      </td>
-                      <td className="px-6 py-5">
-                         <div className="flex items-center gap-2 text-slate-500 text-sm font-medium">
-                            <Mail size={14} className="opacity-40"/> {m.email}
-                         </div>
-                      </td>
-                      <td className="px-6 py-5 text-center">
-                         <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider border ${
-                           m.role === 'Developer' ? 'bg-blue-50 text-blue-600 border-blue-100' : 
-                           m.role === 'Project Manager' ? 'bg-purple-50 text-purple-600 border-purple-100' : 'bg-slate-50 text-slate-400'
-                         }`}>
-                           {m.role}
-                         </span>
-                      </td>
-                      <td className="px-6 py-5 text-right">
-                         <button onClick={() => deleteMember(m.id)} className="p-2 text-slate-200 hover:text-red-500 transition-opacity opacity-0 group-hover:opacity-100">
-                            <Trash2 size={16}/>
-                         </button>
-                      </td>
-                   </tr>
-                 ))}
-               </tbody>
-             </table>
-          </div>
+          filtered.map(member => (
+            <div key={member.id} className="bg-white border border-slate-100 rounded-[28px] p-8 shadow-sm hover:shadow-md transition-all group relative overflow-hidden flex flex-col">
+               
+               {/* TOP: PROFILE HEADER */}
+               <div className="flex justify-between items-start mb-6">
+                  <div className="flex gap-4">
+                    <div className="w-14 h-14 rounded-full bg-[#6366F1] flex items-center justify-center text-xl font-bold text-white shadow-lg shadow-indigo-100">
+                        {member.full_name?.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <h3 className="text-[18px] font-black text-slate-800 leading-tight tracking-tight">{member.full_name}</h3>
+                      <p className="text-xs font-semibold text-slate-400 mt-1">{member.email}</p>
+                      <span className="mt-2 inline-block px-3 py-1 bg-slate-100 text-slate-500 text-[10px] font-bold rounded-lg tracking-wider">
+                         {member.role}
+                      </span>
+                    </div>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase 
+                    ${member.is_active ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                    {member.is_active ? 'Active' : 'Inactive'}
+                  </span>
+               </div>
+
+               {/* MID: TASK STATS */}
+               <div className="grid grid-cols-4 gap-4 py-8 mb-4 border-b border-t border-slate-50 text-center">
+                  <InternalStat value="0" label="Total" color="text-slate-800" />
+                  <InternalStat value="0" label="In Progress" color="text-blue-500" />
+                  <InternalStat value="0" label="Completed" color="text-emerald-500" />
+                  <InternalStat value="0" label="Overdue" color="text-red-500" />
+               </div>
+
+               {/* BOTTOM: ACTIONS BAR */}
+               <div className="pt-2 flex justify-between items-center text-[13px] font-bold">
+                  <button className="text-slate-400 hover:text-indigo-600 transition-colors">Deactivate</button>
+                  <div className="flex items-center gap-4">
+                    <button onClick={() => handleEdit(member)} className="text-slate-600 hover:text-indigo-600 transition-colors">Edit</button>
+                    <button 
+                      onClick={() => deleteMember(member.id)} 
+                      className="bg-red-500 hover:bg-red-600 text-white px-5 py-2 rounded-xl font-bold shadow-lg shadow-red-100 active:scale-95 transition-all"
+                    >
+                      Remove
+                    </button>
+                  </div>
+               </div>
+            </div>
+          ))
         )}
       </div>
 
-      {/* ADD MEMBER MODAL - PIXEL PERFECT TO SCREENSHOT #2 */}
+      {/* 5. MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-           <div className="bg-white w-full max-w-lg rounded-[28px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-              <header className="px-6 py-4 border-b border-slate-50 flex justify-between items-center">
-                 <h2 className="text-xl font-bold text-slate-800">Add Team Member</h2>
-                 <X onClick={() => setIsModalOpen(false)} size={18} className="text-slate-400 cursor-pointer hover:text-slate-800" />
+           <div className="bg-white w-full max-w-lg rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+              <header className="px-6 py-4 border-b border-slate-50 flex justify-between items-center bg-white">
+                 <h2 className="text-xl font-bold text-slate-800">{editingId ? 'Edit Credentials' : 'Add Team Member'}</h2>
+                 <X onClick={closeModal} size={18} className="text-slate-400 cursor-pointer hover:text-slate-800" />
               </header>
 
-              <form onSubmit={handleAddMember} className="p-8 space-y-5 font-sans">
-                 {/* Name Input */}
+              <form onSubmit={handleSubmit} className="p-8 space-y-6">
                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-slate-500 ml-1">Name</label>
-                    <input required className="w-full bg-white border border-slate-200 p-3.5 rounded-xl text-sm outline-none focus:border-[#6366f1] focus:bg-white" onChange={e => setFormData({...formData, full_name: e.target.value})} />
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Member Name</label>
+                    <input required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-xl text-sm outline-none focus:border-indigo-400 focus:bg-white" value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} placeholder="Muhammad Ameer Hamza" />
                  </div>
 
-                 {/* Email Input */}
                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-slate-500 ml-1">Email</label>
-                    <input type="email" required className="w-full bg-white border border-slate-200 p-3.5 rounded-xl text-sm outline-none focus:border-[#6366f1] focus:bg-white" onChange={e => setFormData({...formData, email: e.target.value})} />
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+                    <input type="email" required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-xl text-sm outline-none focus:border-indigo-400 focus:bg-white" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="ameer@codenest.com" />
                  </div>
 
-                 {/* Role Dropdown */}
                  <div className="space-y-1.5 relative">
-                    <label className="text-sm font-semibold text-slate-500 ml-1">Role</label>
-                    <div className="relative">
-                      <select 
-                        className="w-full appearance-none bg-white border border-slate-200 p-3.5 rounded-xl text-sm outline-none focus:border-[#6366f1]" 
-                        value={formData.role} 
-                        onChange={e => setFormData({...formData, role: e.target.value})}
-                      >
-                         <option>Developer</option>
-                         <option>Project Manager</option>
-                         <option>Designer</option>
-                      </select>
-                      <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <div className="flex justify-between items-center ml-1">
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Job Role</label>
+                      <button type="button" onClick={() => setIsCustomRole(!isCustomRole)} className="text-[10px] font-bold text-indigo-500 uppercase flex items-center gap-1">
+                         {isCustomRole ? <ShieldCheck size={12}/> : <Type size={12}/>} Switch Input
+                      </button>
+                    </div>
+                    <div className="relative group">
+                      {isCustomRole ? (
+                        <input required className="w-full bg-slate-50 border border-slate-100 p-4 rounded-xl text-sm outline-none focus:border-indigo-400 focus:bg-white transition-all" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} placeholder="Enter custom role title..." />
+                      ) : (
+                        <>
+                        <select 
+                          className="w-full appearance-none bg-slate-50 border border-slate-100 p-4 rounded-xl text-sm outline-none focus:border-indigo-400 focus:bg-white" 
+                          value={formData.role} 
+                          onChange={e => setFormData({...formData, role: e.target.value})}
+                        >
+                           {standardRoles.map(role => <option key={role} value={role}>{role}</option>)}
+                        </select>
+                        <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </>
+                      )}
                     </div>
                  </div>
 
-                 {/* Active Checkbox (Matches pink/indigo check in screenshot) */}
-                 <div className="flex items-center gap-3 py-2 cursor-pointer">
+                 <div className="flex items-center gap-3 py-1 cursor-pointer ml-1">
                     <input 
-                      type="checkbox" 
-                      id="active"
-                      className="w-5 h-5 rounded border-slate-200 text-[#6366f1] focus:ring-[#6366f1]/20 cursor-pointer"
+                      type="checkbox" id="active-toggle"
+                      className="w-5 h-5 rounded border-slate-200 text-indigo-600 focus:ring-indigo-200 cursor-pointer transition-all"
                       checked={formData.is_active} 
                       onChange={e => setFormData({...formData, is_active: e.target.checked})}
                     />
-                    <label htmlFor="active" className="text-sm font-medium text-slate-600 select-none cursor-pointer">Active member</label>
+                    <label htmlFor="active-toggle" className="text-sm font-bold text-slate-600 cursor-pointer">Member currently active</label>
                  </div>
 
                  <footer className="pt-6 border-t border-slate-50 flex justify-end gap-3">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="px-8 py-2.5 rounded-xl bg-slate-50 text-slate-500 font-bold text-sm hover:bg-slate-100 transition-colors">Cancel</button>
-                    <button type="submit" className="px-8 py-2.5 rounded-xl bg-[#6366f1] text-white font-bold text-sm shadow-xl shadow-indigo-100 hover:brightness-110 active:scale-95 transition-all">Add Member</button>
+                    <button type="button" onClick={closeModal} className="px-10 py-3 rounded-xl bg-slate-100 text-slate-500 font-bold text-xs hover:bg-slate-200 transition-colors">Cancel</button>
+                    <button type="submit" className="px-10 py-3 rounded-xl bg-[#6366F1] text-white font-bold text-xs shadow-xl shadow-indigo-100 active:scale-95">
+                       {editingId ? 'Push Update' : 'Register Member'}
+                    </button>
                  </footer>
               </form>
            </div>
@@ -259,13 +277,22 @@ export default function TeamSection() {
   );
 }
 
-// ---------------- STYLING COMPONENTS ---------------- //
+// ---------------- STYLING SUB-COMPONENTS ---------------- //
 
 function StatCard({ label, value, color }) {
   return (
-    <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm text-center flex flex-col justify-center space-y-1 hover:shadow-md transition-shadow">
-      <h4 className={`text-3xl font-black ${color || 'text-slate-800'} leading-none`}>{value}</h4>
-      <p className="text-[12px] font-bold text-slate-400 uppercase tracking-widest">{label}</p>
+    <div className="bg-white p-7 rounded-[22px] border border-slate-100 shadow-sm text-center flex flex-col items-center justify-center space-y-1.5 transition-all hover:shadow-md">
+      <h4 className={`text-4xl font-extrabold ${color || 'text-slate-800'} tracking-tighter`}>{value}</h4>
+      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{label}</p>
     </div>
   );
+}
+
+function InternalStat({ value, label, color }) {
+    return (
+        <div className="flex flex-col items-center gap-0.5">
+           <span className={`text-xl font-bold ${color}`}>{value}</span>
+           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">{label}</span>
+        </div>
+    );
 }

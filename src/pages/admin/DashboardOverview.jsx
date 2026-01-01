@@ -2,201 +2,277 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from "../../supabaseClient";
 import { 
   Users, Activity, AlertTriangle, 
-  TrendingUp, ArrowUpRight, Zap, History, Clock 
+  TrendingUp, Search, Bell, Plus,
+  Check, X, LogOut, User, Settings,
+  Moon, ChevronRight, UserPlus, 
+  FolderPlus, CheckSquare, PlusSquare, 
+  Building2, CircleDollarSign, Clock, LayoutDashboard
 } from 'lucide-react';
 
-/* 
-   TIER 1 DEV NOTE: 
-   Prop { setActiveTab } is essential to prevent "White Screen" 
-   crashes during module transitions.
-*/
-export default function Dashboard({ setActiveTab }) {
+export default function AdminDashboardOverview({ setActiveTab }) {
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [pendingUsers, setPendingUsers] = useState([]);
+  
+  // LOGIC HUB: UPDATED DATA STATE
   const [data, setData] = useState({
     projects: [],
+    clients: [],
     profiles: [],
-    revenuePkr: 0,
-    marketRate: 278.50,
+    revenue: 0,
+    atRisk: 0,
+    completedThisWeek: 0,
+    overdueTasks: 0,
+    emergencyTasks: 0
   });
 
-  // DATA NODE UPLINK
   useEffect(() => {
-    async function fetchStats() {
-      const { data: projs } = await supabase.from('projects').select('*');
-      const { data: profs } = await supabase.from('profiles').select('*');
+    fetchStats();
+    
+    // MASTER SYNC: Listening to everything
+    const channel = supabase
+      .channel('realtime-dashboard-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchStats())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => fetchStats())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, () => fetchStats())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => fetchStats())
+      .subscribe();
       
-      const activeCount = projs?.filter(p => p.status === 'ACTIVE').length || 0;
-      const calculatedRevenue = activeCount * 500 * data.marketRate;
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
-      setData(prev => ({ 
-        ...prev, 
-        projects: projs || [], 
-        profiles: profs || [],
-        revenuePkr: calculatedRevenue 
-      }));
+  async function fetchStats() {
+    try {
+      // Parallel fetch for speed
+      const [projs, profs, cls, tks] = await Promise.all([
+        supabase.from('projects').select('*'),
+        supabase.from('profiles').select('*'),
+        supabase.from('clients').select('*'),
+        supabase.from('tasks').select('*')
+      ]);
+
+      const projects = projs.data || [];
+      const staff = profs.data || [];
+      const clients = cls.data || [];
+      const tasks = tks.data || [];
+
+      const today = new Date().toISOString().split('T')[0];
+
+      // Logic: Sum of all client monthly values
+      const trueRevenue = clients.reduce((acc, curr) => acc + Number(curr.monthly_value || 0), 0);
+
+      // Logic: Task counts based on status and deadline
+      const overdue = tasks.filter(t => t.deadline < today && t.status !== 'Done').length;
+      const emergency = tasks.filter(t => t.priority === 'High' && t.status !== 'Done').length;
+
+      setData({
+        projects: projects,
+        clients: clients,
+        profiles: staff,
+        revenue: trueRevenue,
+        atRisk: projects.filter(p => (Number(p.progress) || 0) < 30).length,
+        completedThisWeek: projects.filter(p => p.status === 'Completed').length,
+        overdueTasks: overdue,
+        emergencyTasks: emergency
+      });
+
+      setPendingUsers(staff.filter(p => p.is_approved === false));
+    } catch (error) {
+      console.error(error);
+    } finally {
       setLoading(false);
     }
-    fetchStats();
-  }, [data.marketRate]);
+  }
 
-  const stats = [
-    {
-      title: 'OPERATIONAL NODES',
-      value: data.profiles.length,
-      subtitle: `${data.profiles.filter(p => !p.is_approved).length} AWAITING AUTH`,
-      icon: <Users size={16} />,
-      color: "text-[#2b945f]",
-      bg: "bg-[#2b945f]/10"
-    },
-    {
-      title: 'LIQUIDITY VAULT',
-      value: `PKR ${data.revenuePkr.toLocaleString()}`,
-      subtitle: `INDEX: ${data.marketRate}`,
-      icon: <TrendingUp size={16} />,
-      color: "text-[#5542f0]",
-      bg: "bg-[#5542f0]/10"
-    },
-    {
-      title: 'ACTIVE MATRIX',
-      value: data.projects.filter(p => p.status === 'ACTIVE').length,
-      subtitle: 'RELEASED_STABLE',
-      icon: <Activity size={16} />,
-      color: "text-[#2b945f]",
-      bg: "bg-[#2b945f]/10"
-    },
-    {
-      title: 'RISK PROTOCOLS',
-      value: data.projects.filter(p => p.progress < 20).length,
-      subtitle: 'DELAYED EXECUTION',
-      icon: <AlertTriangle size={16} />,
-      color: "text-red-600",
-      bg: "bg-red-50"
-    }
-  ];
+  // --- Search Filtering ---
+  const filteredProjects = data.projects.filter(p => 
+    p.project_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.client_name?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.reload(); 
+  };
 
   if (loading) return (
-    <div className="flex items-center justify-center h-[40vh]">
-      <Zap className="animate-pulse text-[#2b945f]" size={40} />
+    <div className="h-screen w-full flex items-center justify-center bg-[#F8FAFC]">
+      <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-[#6366f1]"></div>
     </div>
   );
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-700 font-black italic uppercase">
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col w-full font-sans text-slate-900 overflow-x-hidden">
       
-      {/* 1. NATIVE DENSITY STAT GRID (Fits perfectly on standard desktop) */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {stats.map((stat, i) => (
-          <div key={i} className="bg-white p-5 rounded-[28px] border border-slate-50 shadow-sm hover:shadow-xl transition-all group">
-            <div className="flex justify-between items-start mb-4">
-              <div className={`p-3 rounded-xl ${stat.bg} ${stat.color} group-hover:scale-110 transition-transform`}>
-                {stat.icon}
-              </div>
-              <ArrowUpRight size={14} className="text-slate-200" />
-            </div>
-            <p className="text-[8px] text-slate-400 mb-1 tracking-[0.2em]">{stat.title}</p>
-            <h3 className="text-xl text-black tracking-tighter leading-none">{stat.value}</h3>
-            <p className="text-[7px] mt-3 text-[#2b945f] opacity-60">{stat.subtitle}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* 2. EMERGENCY BYPASS BANNER (INTERNAL REDIRECTION) */}
-      <div className="bg-[#0c3740] rounded-[25px] p-5 border-l-[8px] border-red-600 shadow-xl flex items-center justify-between">
-         <div className="flex items-center gap-4">
-            <div className="bg-red-600 p-2.5 rounded-full animate-pulse">
-               <AlertTriangle className="text-white" size={18} />
-            </div>
-            <div>
-               <h3 className="text-white text-base tracking-tighter leading-none">Security Node Handshake</h3>
-               <p className="text-white/30 text-[8px] tracking-[0.2em] mt-1.5 uppercase">Identity Link pending: Rabnawaz Administrative gate open.</p>
-            </div>
-         </div>
-         {/* FIX: Use setActiveTab to change screens internally without refresh */}
-         <button onClick={() => setActiveTab('team')} className="bg-white text-[#0c3740] px-6 py-2.5 rounded-xl text-[9px] shadow-lg hover:bg-[#2b945f] hover:text-white transition-all font-black">
-            Open decision gate
-         </button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <header className="flex flex-col md:flex-row md:items-center justify-between px-8 py-6 gap-4">
+        <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
         
-        {/* 3. EXECUTION CLUSTER STREAM (Compact Density) */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="bg-white p-7 rounded-[35px] shadow-sm border border-slate-50">
-            <div className="flex items-center justify-between mb-8">
-               <h2 className="text-sm text-black tracking-tight leading-none uppercase italic font-black">Cluster Execution Matrix</h2>
-               {/* FIX: Internal tab switch */}
-               <button onClick={() => setActiveTab('projects')} className="text-[#2b945f] text-[9px] border-b-2 border-[#2b945f] hover:text-black transition-colors pb-0.5">Matrix Logs →</button>
-            </div>
-            
-            <div className="space-y-4">
-              {data.projects.slice(0, 4).map((proj, idx) => (
-                <div key={idx} className="p-4 bg-[#F9FBFC] rounded-2xl border-2 border-white hover:border-[#2b945f]/20 transition-all cursor-pointer" onClick={() => setActiveTab('projects')}>
-                  <div className="flex justify-between items-center mb-3">
-                    <div className="min-w-0">
-                      <h4 className="text-xs text-[#0c3740] tracking-tight truncate leading-none uppercase italic font-black">{proj.project_name}</h4>
-                      <p className="text-[7px] text-slate-300 mt-1 tracking-widest">{proj.client_name || 'EXTERNAL_NODE'}</p>
-                    </div>
-                    <span className="shrink-0 text-[6px] font-black uppercase tracking-widest px-2.5 py-1 bg-white border border-slate-50 text-slate-400 rounded-md">Protocol_Locked</span>
-                  </div>
-                  <div className="h-1 bg-white rounded-full overflow-hidden border border-slate-100 shadow-inner">
-                    <div 
-                      className="bg-[#2b945f] h-full transition-all duration-1000 shadow-[0_0_10px_rgba(43,148,95,0.3)]" 
-                      style={{ width: `${proj.progress || 35}%` }} 
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+        <div className="flex items-center gap-3 flex-1 md:justify-end">
+          <div className="relative w-full max-w-[400px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input 
+              type="text" 
+              placeholder="Search matrix..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-[#e2e8f0]/40 border border-slate-200/50 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:border-indigo-400 outline-none transition-all"
+            />
+          </div>
+
+          <button className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 shadow-sm"><Moon size={18} /></button>
+          
+          <div className="relative">
+            <button 
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 shadow-sm relative"
+            >
+              <Bell size={18} />
+              {pendingUsers.length > 0 && <span className="absolute top-2 right-2.5 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white"></span>}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 pl-3 ml-1 border-l border-slate-200">
+             <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="w-8 h-8 rounded-lg bg-[#6366f1] text-white font-bold text-xs flex items-center justify-center">A</button>
+             <span className="text-xs font-bold text-slate-700 hidden sm:block">Admin</span>
           </div>
         </div>
+      </header>
 
-        {/* 4. ACTIVITY & AUDIT HUD (Clean Side Layout) */}
-        <div className="space-y-6">
-           <div className="bg-white p-7 rounded-[35px] shadow-sm border border-slate-100">
-              <h2 className="text-xs text-black mb-6 italic font-black uppercase leading-none border-b border-slate-50 pb-4">Audit Stream</h2>
-              <div className="space-y-5">
-                 <MiniAuditItem icon={<History size={12} />} text="Registry Optimized" time="2M" color="bg-[#0c3740]" />
-                 <MiniAuditItem icon={<Zap size={12} />} text="New Access Pulse" time="15M" color="bg-[#5542f0]" />
-                 <MiniAuditItem icon={<Clock size={12} />} text="Handshake Confirmed" time="1H" color="bg-[#2b945f]" />
-              </div>
-           </div>
+      <main className="flex-1 px-8 pb-10 space-y-6">
+        
+        {/* UPDATED CARDS WITH REAL LOGIC */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+           {/* Active Clients uses the Clients Table count */}
+           <StatTile 
+              title="Active Clients" 
+              val={data.clients.filter(c => c.status === 'Active').length} 
+              icon={<Building2 className="text-indigo-600" size={20}/>} 
+              iconBg="bg-indigo-50" 
+              footer={`${data.clients.length} total nodes in registry`} 
+           />
 
-           {/* HIGH-IMPACT LIQUIDITY CARD (DESIGN COMPLIANCE) */}
-           <div className="bg-[#2b945f] p-7 rounded-[35px] shadow-2xl text-white relative overflow-hidden group">
-              <div className="relative z-10">
-                 <h2 className="text-[7px] mb-2 opacity-50 tracking-[0.4em] font-black">Financial Matrix</h2>
-                 <p className="text-2xl tracking-tighter leading-none mb-6">Local yield: stable</p>
-                 <div className="flex justify-between border-t border-white/20 pt-4 mt-2">
-                    <div>
-                       <p className="text-[7px] opacity-40 mb-1">Status</p>
-                       <p className="text-xs leading-none">REMIT_READY</p>
-                    </div>
-                    <div className="text-right">
-                       <p className="text-[7px] opacity-40 mb-1">Market</p>
-                       <p className="text-xs leading-none">POSITIVE</p>
-                    </div>
-                 </div>
-              </div>
-              <TrendingUp className="absolute -bottom-6 -right-6 text-white/10 group-hover:scale-125 transition-transform" size={130} />
-           </div>
+           {/* Monthly Revenue sums specific PKR values and formats them */}
+           <StatTile 
+              title="Monthly Revenue" 
+              val={`$${data.revenue.toLocaleString()}`} 
+              icon={<CircleDollarSign className="text-indigo-600" size={20}/>} 
+              iconBg="bg-indigo-50" 
+              footer="Aggregate Portfolio Yield" 
+           />
+
+           {/* Overdue logic looks for past deadlines on unfinished tasks */}
+           <StatTile 
+              title="Overdue Tasks" 
+              val={data.overdueTasks} 
+              icon={<Clock className="text-indigo-600" size={20}/>} 
+              iconBg="bg-indigo-50" 
+              footer="Urgent resolution needed" 
+           />
+
+           {/* Emergency Tasks counts tasks set to HIGH Priority */}
+           <StatTile 
+              title="Emergency Tasks" 
+              val={data.emergencyTasks} 
+              icon={<AlertTriangle className="text-indigo-600" size={20}/>} 
+              iconBg="bg-indigo-50" 
+              footer="High priority threads" 
+           />
         </div>
 
-      </div>
+        {/* NAVIGATION SHORTCUTS */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+           <DashedAction onClick={() => setActiveTab('clients')} icon={<UserPlus size={18}/>} label="Add Client" />
+           <DashedAction onClick={() => setActiveTab('projects')} icon={<Plus size={18} strokeWidth={3}/>} label="New Project" />
+           <DashedAction onClick={() => setActiveTab('tasks')} icon={<CheckSquare size={18}/>} label="Add Task" />
+           <DashedAction onClick={() => setActiveTab('team')} icon={<PlusSquare size={18}/>} label="Add Team" />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+           <div className="lg:col-span-8 bg-white border border-slate-200 rounded-[28px] p-6 shadow-sm min-h-[400px]">
+             <div className="flex justify-between items-center pb-6 border-b border-slate-50">
+                <h3 className="font-bold text-slate-800">Active Matrix Projects</h3>
+                <button onClick={()=>setActiveTab('projects')} className="text-xs font-bold text-indigo-600 hover:underline transition-all">View all →</button>
+             </div>
+             
+             <div className="py-4 space-y-4">
+                {filteredProjects.slice(0, 5).map((p, i) => (
+                   <div key={i} className="flex items-center justify-between p-3 rounded-2xl border border-slate-50 hover:bg-slate-50 group">
+                      <div>
+                         <p className="text-sm font-bold text-slate-700 truncate">{p.project_name}</p>
+                         <p className="text-[10px] font-bold text-indigo-500 uppercase mt-0.5 tracking-wider">{p.client_name}</p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                         <div className="w-24 bg-slate-100 h-2 rounded-full overflow-hidden border border-white">
+                            <div className="bg-indigo-600 h-full" style={{width: `${p.progress || 10}%`}}></div>
+                         </div>
+                         <span className="text-xs font-black text-slate-800 w-10 text-right">{p.progress || 0}%</span>
+                      </div>
+                   </div>
+                ))}
+                {filteredProjects.length === 0 && <p className="text-center py-20 text-slate-300 font-bold uppercase text-[10px] tracking-widest">No matching node records found</p>}
+             </div>
+           </div>
+
+           <div className="lg:col-span-4 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                 <MetricSmall label="STABLE LOAD" val={data.completedThisWeek} growth="Concluded Units" />
+                 <MetricSmall label="TARGET MRR" val={`$${(data.revenue + 1500).toLocaleString()}`} growth="Projected Ceiling" />
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-sm divide-y divide-slate-50">
+                 <StatusItem label="Clients At Risk" val={data.atRisk} isBad={data.atRisk > 0} />
+                 <StatusItem label="Total Live Threads" val={data.projects.length} />
+                 <StatusItem label="System Stability" val="99.9%" />
+                 <StatusItem label="Pending Signups" val={pendingUsers.length} isBad={pendingUsers.length > 0} />
+              </div>
+           </div>
+        </div>
+      </main>
     </div>
   );
 }
 
-// SHARED UTILITY NODE: AUDIT FEED
-function MiniAuditItem({ icon, text, time, color }) {
+// ---------------- SHARED INTERFACE NODES ---------------- //
+
+function StatTile({ title, val, icon, iconBg, footer }) {
   return (
-    <div className="flex items-center gap-4">
-      <div className={`size-8 rounded-xl flex items-center justify-center text-white shadow-md ${color}`}>
-        {icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[9px] font-black italic uppercase text-slate-800 leading-none truncate">{text}</p>
-        <span className="text-[7px] text-slate-300 mt-1 tracking-widest">{time} AGO</span>
-      </div>
+    <div className="bg-white border border-slate-100 rounded-[28px] p-6 flex flex-col justify-between shadow-sm transition-all hover:shadow-lg hover:border-slate-200">
+       <div className="flex justify-between items-start mb-2">
+         <p className="text-xs font-bold text-slate-400">{title}</p>
+         <div className={`p-2 ${iconBg} rounded-xl shadow-sm`}>{icon}</div>
+       </div>
+       <h2 className="text-4xl font-extrabold text-slate-900 leading-tight mb-2 tracking-tight">{val}</h2>
+       <p className="text-[11px] font-medium text-slate-500">{footer}</p>
+    </div>
+  );
+}
+
+function DashedAction({ icon, label, onClick }) {
+  return (
+    <button onClick={onClick} className="border-2 border-dashed border-slate-200 rounded-[24px] p-6 flex flex-col items-center justify-center gap-3 text-slate-400 hover:border-indigo-400 hover:text-indigo-600 transition-all hover:bg-white hover:shadow-md">
+       <div className="transition-transform group-hover:scale-110">{icon}</div>
+       <span className="text-xs font-bold">{label}</span>
+    </button>
+  );
+}
+
+function MetricSmall({ label, val, growth }) {
+  return (
+    <div className="bg-white border border-slate-100 rounded-[24px] p-6 text-center">
+       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+       <h4 className="text-2xl font-black text-slate-800 leading-none mb-3">{val}</h4>
+       <div className="bg-emerald-50 text-emerald-600 text-[9px] font-bold py-0.5 rounded-full">{growth}</div>
+    </div>
+  );
+}
+
+function StatusItem({ label, val, isBad }) {
+  return (
+    <div className="flex justify-between items-center py-3 text-[13px] font-medium">
+       <span className="text-slate-400">{label}</span>
+       <span className={`font-black ${isBad ? 'text-red-500 underline decoration-2' : 'text-slate-800'}`}>{val}</span>
     </div>
   );
 }

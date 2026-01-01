@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { 
-  Plus, Search, UserCheck, Globe, Mail, 
-  TrendingUp, Activity, Trash2, X, Filter,
-  Fingerprint, Briefcase, Zap, DollarSign, Edit3
+  Plus, Search, Globe, Mail, 
+  Trash2, X, Building2, Edit3, 
+  ChevronDown, Calendar, Check
 } from 'lucide-react';
 
 export default function ClientsCenter() {
@@ -13,254 +13,324 @@ export default function ClientsCenter() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   
-  // MODAL FORM STATE
+  // FORM STATE - Matched to your Modal Screenshot
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
-    business_name: '', website_url: '', contact_name: '', email: '',
-    monthly_value: 0, status: 'Active', start_date: new Date().toISOString().split('T')[0]
+    business_name: '', contact_name: '', email: '', 
+    website_url: '', monthly_value: 0, status: 'Active', 
+    services: [], start_date: new Date().toISOString().split('T')[0],
+    notes: ''
   });
 
-  // LOGIC NODE: HQ PORTFOLIO HANDSHAKE
+  const availableServices = [
+    'Web Development', 'Mobile App', 'UI/UX Design', 
+    'SEO', 'Maintenance', 'Consulting'
+  ];
+
+  // BRAIN: FETCH & REALTIME SYNC
   useEffect(() => {
     fetchClients();
-    const sub = supabase.channel('clients-hq-sync')
-      .on('postgres_changes', { event: '*', table: 'clients' }, () => fetchClients())
+    
+    // Subscribe to realtime changes so it updates automatically "Boom!"
+    const channel = supabase
+      .channel('public:clients')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, () => {
+        fetchClients();
+      })
       .subscribe();
-    return () => supabase.removeChannel(sub);
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const fetchClients = async () => {
-    const { data } = await supabase.from('clients').select('*').order('created_at', { ascending: false });
-    setClients(data || []);
-    setLoading(false);
+  async function fetchClients() {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setClients(data || []);
+    } catch (error) {
+      console.error("Error fetching clients:", error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // LOGIC: HANDLE SERVICES TOGGLE
+  const toggleService = (service) => {
+    setFormData(prev => ({
+      ...prev,
+      services: prev.services.includes(service)
+        ? prev.services.filter(s => s !== service)
+        : [...prev.services, service]
+    }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editingId) {
-      await supabase.from('clients').update(formData).eq('id', editingId);
-    } else {
-      await supabase.from('clients').insert([formData]);
+    try {
+      if (editingId) {
+        await supabase.from('clients').update(formData).eq('id', editingId);
+      } else {
+        const { error } = await supabase.from('clients').insert([formData]);
+        if (error) throw error;
+      }
+      closeModal();
+      fetchClients();
+    } catch (error) {
+      alert("Database Error: " + error.message);
     }
-    setIsModalOpen(false);
-    setEditingId(null);
-    setFormData({ business_name: '', website_url: '', contact_name: '', email: '', monthly_value: 0, status: 'Active', start_date: new Date().toISOString().split('T')[0] });
   };
 
-  const purgeClient = async (id, name) => {
-    if (window.confirm(`CRITICAL: PURGE ${name.toUpperCase()} PORTFOLIO NODE?`)) {
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingId(null);
+    setFormData({
+      business_name: '', contact_name: '', email: '', 
+      website_url: '', monthly_value: 0, status: 'Active', 
+      services: [], start_date: new Date().toISOString().split('T')[0],
+      notes: ''
+    });
+  };
+
+  const deleteClient = async (id) => {
+    if (window.confirm("Delete this client permanently?")) {
       await supabase.from('clients').delete().eq('id', id);
+      fetchClients();
     }
   };
 
   const filtered = clients.filter(c => {
-    const matchesSearch = c.business_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          c.contact_name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = c.business_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          c.contact_name?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   if (loading) return (
-    <div className="flex items-center justify-center h-[50vh]">
-      <div className="flex flex-col items-center gap-4">
-         <Globe className="animate-spin text-[#2b945f]" size={40} />
-         <p className="font-black italic uppercase text-[10px] text-slate-400">Syncing Global Matrix...</p>
-      </div>
+    <div className="flex items-center justify-center h-[60vh] w-full">
+      <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-[#6366F1]"></div>
     </div>
   );
 
   return (
-    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-8 duration-700">
+    <div className="flex-1 p-8 bg-[#F8FAFC] min-h-screen font-sans animate-in fade-in duration-500">
       
-      {/* COMMAND HEADER PANEL */}
-      <div className="flex justify-between items-end bg-[#0c3740] p-12 rounded-[50px] shadow-2xl relative overflow-hidden">
-        <div className="relative z-10">
-           <div className="flex items-center gap-3 mb-4">
-              <UserCheck className="text-[#2b945f]" size={20} />
-              <span className="text-[#2b945f] font-black italic uppercase text-[10px] tracking-[0.5em]">System Admin: Sir Rabnawaz</span>
-           </div>
-           <h1 className="text-5xl font-black italic uppercase text-white tracking-tighter">Clients Center</h1>
-           <p className="text-white/30 font-black italic uppercase text-[10px] tracking-widest mt-4">Node Operations Center • Cluster Layer Mapping</p>
+      {/* HEADER ROW */}
+      <div className="flex justify-between items-center mb-8">
+        <div>
+           <h1 className="text-2xl font-bold text-slate-800">Clients</h1>
+           <p className="text-slate-500 text-sm mt-1 font-medium">Manage your client relationships</p>
         </div>
         <button 
-          onClick={() => { setEditingId(null); setIsModalOpen(true); }}
-          className="relative z-10 bg-white text-black px-10 py-5 rounded-[28px] font-black italic uppercase text-xs border-b-8 border-[#2b945f] hover:bg-black hover:text-white transition-all shadow-2xl flex items-center gap-3"
+          onClick={() => setIsModalOpen(true)}
+          className="bg-[#6366F1] hover:bg-[#585af2] text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg flex items-center gap-2 transition-all active:scale-95"
         >
-          <Plus size={20} /> Establish Node
+          <Plus size={20} strokeWidth={3} /> Add Client
         </button>
-        <TrendingUp className="absolute -right-16 -top-16 text-white/5" size={320} />
       </div>
 
-      {/* OPERATIONAL STATUS GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-        <ClientStat label="Registry Total" value={clients.length} color="text-black" />
-        <ClientStat label="Execution Status: Active" value={clients.filter(c=>c.status==='Active').length} color="text-[#2b945f]" />
-        <ClientStat label="Execution Status: On Hold" value={clients.filter(c=>c.status==='On Hold').length} color="text-amber-500" />
-        <ClientStat label="Protocol: High Risk" value={clients.filter(c=>c.status==='At Risk').length} color="text-red-600 animate-pulse" />
-      </div>
-
-      {/* SCANNING & IDENTITY FILTERS */}
-      <div className="flex gap-6 items-center">
-         <div className="flex-1 relative group">
-            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-[#2b945f] transition-colors" size={20} />
-            <input 
-              className="w-full bg-white border-4 border-slate-50 p-6 pl-16 rounded-[35px] font-black italic uppercase text-[10px] tracking-widest shadow-sm outline-none focus:ring-4 ring-[#2b945f]/10"
-              placeholder="SCAN BUSINESS IDENTITY..."
-              value={searchQuery}
-              onChange={(e)=>setSearchQuery(e.target.value)}
-            />
-         </div>
-         <div className="bg-[#0c3740] p-1.5 rounded-3xl border-4 border-white shadow-lg">
-            <select 
-              className="bg-transparent text-white px-8 py-4 font-black italic uppercase text-[10px] outline-none"
-              value={statusFilter}
-              onChange={(e)=>setStatusFilter(e.target.value)}
-            >
-              <option value="all" className="bg-[#0c3740]">PROTOCOL: ALL_UNITS</option>
-              <option value="Active" className="bg-[#0c3740]">STATUS: OPERATIONAL</option>
-              <option value="On Hold" className="bg-[#0c3740]">STATUS: IDLE_STANDBY</option>
-              <option value="At Risk" className="bg-[#0c3740]">STATUS: COMPROMISED</option>
-            </select>
-         </div>
-      </div>
-
-      {/* CLIENT MATRIX GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 pb-20">
-        {filtered.map((client) => (
-          <div 
-            key={client.id} 
-            className={`bg-white rounded-[55px] p-12 border-4 group transition-all duration-500 hover:shadow-2xl relative overflow-hidden shadow-sm ${
-              client.status === 'At Risk' ? 'border-red-600/30 bg-red-50/10' : 'border-slate-50 hover:border-[#2b945f]'
-            }`}
+      {/* FILTER ROW (Exact alignment from screenshot) */}
+      <div className="flex gap-4 mb-8">
+        <div className="flex-1 relative group">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
+          <input 
+            type="text" 
+            placeholder="Search clients..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-white border border-slate-200 py-3 pl-11 pr-4 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-[#6366F1] transition-all placeholder:text-slate-400"
+          />
+        </div>
+        <div className="relative">
+          <select 
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="appearance-none bg-white border border-slate-200 py-3 pl-4 pr-12 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:border-indigo-500"
           >
-            <div className="flex justify-between items-start mb-12">
-               <div className="flex gap-6 items-center">
-                  <div className="w-16 h-16 bg-[#0c3740] rounded-[24px] flex items-center justify-center font-black italic text-2xl text-[#2b945f] border-4 border-white shadow-xl transition-transform group-hover:scale-110">
-                     {client.business_name.charAt(0)}
-                  </div>
-                  <div>
-                    <h3 className="text-3xl font-black italic uppercase tracking-tighter text-black leading-none">{client.business_name}</h3>
-                    <p className="text-[10px] font-black italic uppercase text-slate-400 mt-2 tracking-tighter">UUID: {client.id.substring(0,8).toUpperCase()}</p>
-                  </div>
-               </div>
-               <span className={`px-5 py-2 rounded-2xl text-[9px] font-black italic uppercase tracking-[0.2em] border-2 ${
-                 client.status === 'Active' ? 'bg-[#2b945f]/5 text-[#2b945f] border-[#2b945f]/20' : 
-                 client.status === 'At Risk' ? 'bg-red-100 text-red-600 border-red-200 animate-pulse' :
-                 'bg-amber-50 text-amber-500 border-amber-100'
-               }`}>
-                 {client.status.replace(' ', '_')}
-               </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6 mb-12 border-y-2 border-slate-50 py-10 italic">
-               <div className="space-y-4">
-                  <IdentityLine icon={<Briefcase size={16}/>} label="Primary Op" value={client.contact_name} />
-                  <IdentityLine icon={<Mail size={16}/>} label="Logic Bridge" value={client.email} />
-               </div>
-               <div className="space-y-4">
-                  <IdentityLine icon={<Globe size={16}/>} label="Matrix URL" value={client.website_url || 'UNDEFINED'} />
-                  <IdentityLine icon={<DollarSign size={16}/>} label="Net Local Yield" value={`PKR ${Number(client.monthly_value).toLocaleString()}`} />
-               </div>
-            </div>
-
-            <div className="flex justify-between items-center">
-               <span className="text-[10px] font-black italic uppercase text-slate-300">Cluster Start: {client.start_date}</span>
-               <div className="flex gap-4">
-                  <button 
-                    onClick={() => {
-                       setEditingId(client.id);
-                       setFormData({ ...client });
-                       setIsModalOpen(true);
-                    }}
-                    className="p-4 bg-[#F9FBFC] rounded-2xl hover:bg-black hover:text-white transition-all text-slate-400 hover:scale-110 shadow-sm border border-slate-100"
-                  >
-                    <Edit3 size={18} />
-                  </button>
-                  <button onClick={()=>purgeClient(client.id, client.business_name)} className="p-4 text-red-600/30 hover:text-red-600 rounded-2xl transition-all">
-                    <Trash2 size={24} />
-                  </button>
-               </div>
-            </div>
-            {client.status === 'At Risk' && <Fingerprint className="absolute -bottom-10 -right-10 text-red-600 opacity-5" size={200} />}
-          </div>
-        ))}
+            <option value="all">All Status</option>
+            <option value="Active">Active</option>
+            <option value="On Hold">On Hold</option>
+            <option value="At Risk">At Risk</option>
+          </select>
+          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+        </div>
       </div>
 
-      {/* ESTABLISH/EDIT MODAL: DESIGNED FOR TERMINAL INPUT */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-[#0c3740]/98 backdrop-blur-2xl z-[9999] flex items-center justify-center p-6 selection:bg-[#2b945f]">
-           <div className="bg-white w-full max-w-[650px] rounded-[65px] border-[10px] border-white overflow-hidden shadow-2xl animate-in zoom-in-95 duration-500 font-black italic uppercase">
-              <header className="bg-black p-12 flex justify-between items-center text-white border-b-8 border-[#2b945f]">
-                 <div>
-                    <h2 className="text-2xl font-black italic uppercase text-white tracking-widest">{editingId ? 'RECALIBRATE_NODE' : 'ESTABLISH_NEW_NODE'}</h2>
-                    <p className="text-[10px] font-black italic uppercase text-[#2b945f] mt-1 opacity-60 underline decoration-indigo-400">HQ Database Uploader System</p>
-                 </div>
-                 <X className="cursor-pointer opacity-30 hover:opacity-100 hover:rotate-90 transition-all" size={40} onClick={()=>setIsModalOpen(false)} />
-              </header>
+      {/* STATS PANEL */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <StatCard label="Total Clients" value={clients.length} color="text-slate-800" />
+        <StatCard label="Active" value={clients.filter(c => c.status === 'Active').length} color="text-emerald-600" />
+        <StatCard label="On Hold" value={clients.filter(c => c.status === 'On Hold').length} color="text-amber-500" />
+        <StatCard label="At Risk" value={clients.filter(c => c.status === 'At Risk').length} color="text-red-600" />
+      </div>
 
-              <form onSubmit={handleSubmit} className="p-12 space-y-6">
-                 <div className="grid grid-cols-2 gap-8">
-                    <Field label="Business String ID" placeholder="NAME OF BUSINESS..." val={formData.business_name} setVal={(v)=>setFormData({...formData, business_name: v})} />
-                    <Field label="Lead Identity String" placeholder="PRIMARY CONTACT..." val={formData.contact_name} setVal={(v)=>setFormData({...formData, contact_name: v})} />
+      {/* DATA CONTENT AREA */}
+      <div className="bg-white border border-slate-200 rounded-3xl min-h-[450px] overflow-hidden flex flex-col shadow-sm">
+        {filtered.length === 0 ? (
+          /* EMPTY STATE (Exactly like your screenshot) */
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
+            <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mb-6 border border-slate-100">
+               <Building2 size={36} className="text-slate-300" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-800">No clients found</h3>
+            <p className="text-sm text-slate-500 mt-1 mb-8">Add your first client to get started</p>
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="bg-[#6366F1] hover:bg-[#585af2] text-white px-8 py-3 rounded-xl font-bold text-sm shadow-md"
+            >
+              Add Client
+            </button>
+          </div>
+        ) : (
+          /* LIST TABLE */
+          <div className="overflow-x-auto">
+             <table className="w-full text-left">
+                <thead className="bg-slate-50/50">
+                   <tr className="border-b border-slate-100">
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Business Info</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Contact</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Value ($)</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Services</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Action</th>
+                   </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                   {filtered.map(c => (
+                     <tr key={c.id} className="hover:bg-slate-50/40 group">
+                        <td className="px-6 py-5">
+                           <p className="font-bold text-slate-800">{c.business_name}</p>
+                           <p className="text-xs text-indigo-500 truncate max-w-[150px]">{c.website_url}</p>
+                        </td>
+                        <td className="px-6 py-5">
+                           <p className="text-sm font-semibold text-slate-700">{c.contact_name}</p>
+                           <p className="text-xs text-slate-400">{c.email}</p>
+                        </td>
+                        <td className="px-6 py-5 font-bold text-slate-700">${Number(c.monthly_value).toLocaleString()}</td>
+                        <td className="px-6 py-5">
+                           <div className="flex gap-1 flex-wrap">
+                              {(c.services || []).slice(0, 2).map((s, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-indigo-50 text-[#6366F1] rounded text-[10px] font-bold uppercase">{s}</span>
+                              ))}
+                              {(c.services?.length > 2) && <span className="text-[10px] text-slate-400 font-bold">+{c.services.length - 2}</span>}
+                           </div>
+                        </td>
+                        <td className="px-6 py-5 text-right">
+                           <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => { setEditingId(c.id); setFormData(c); setIsModalOpen(true); }} className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-indigo-600"><Edit3 size={16}/></button>
+                              <button onClick={() => deleteClient(c.id)} className="p-2 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
+                           </div>
+                        </td>
+                     </tr>
+                   ))}
+                </tbody>
+             </table>
+          </div>
+        )}
+      </div>
+
+      {/* MODAL - DESIGNED EXACTLY AS SCREENSHOT */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden font-sans">
+            <header className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white">
+              <h2 className="font-bold text-slate-800">{editingId ? 'Edit Client' : 'Add New Client'}</h2>
+              <X onClick={closeModal} size={18} className="cursor-pointer text-slate-400 hover:text-slate-600 transition-colors" />
+            </header>
+
+            <form onSubmit={handleSubmit} className="p-8 space-y-6">
+               <div className="grid grid-cols-2 gap-6">
+                 <div className="space-y-2">
+                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Business Name</label>
+                   <input required type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-[#6366F1]" value={formData.business_name} onChange={(e) => setFormData({...formData, business_name: e.target.value})} />
                  </div>
-                 <div className="grid grid-cols-2 gap-8">
-                    <Field label="Uplink email" placeholder="ACCESS_BRIDGE@GMAIL.COM" type="email" val={formData.email} setVal={(v)=>setFormData({...formData, email: v})} />
-                    <Field label="Cluster Node URL" placeholder="WWW.SITE.COM" val={formData.website_url} setVal={(v)=>setFormData({...formData, website_url: v})} />
+                 <div className="space-y-2">
+                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact Name</label>
+                   <input required type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 outline-none focus:border-[#6366F1]" value={formData.contact_name} onChange={(e) => setFormData({...formData, contact_name: e.target.value})} />
                  </div>
-                 <div className="grid grid-cols-2 gap-8">
-                    <div className="space-y-3">
-                        <label className="text-[9px] text-slate-400 ml-4">Monthly Local Yield (PKR)</label>
-                        <input type="number" required className="w-full bg-[#F9FBFC] p-6 rounded-3xl font-black italic border-none focus:ring-4 ring-[#2b945f]/10" value={formData.monthly_value} onChange={(e)=>setFormData({...formData, monthly_value: e.target.value})} />
-                    </div>
-                    <div className="space-y-3">
-                        <label className="text-[9px] text-slate-400 ml-4">Protocol Node Status</label>
-                        <select className="w-full bg-[#F9FBFC] p-6 rounded-3xl font-black italic border-none appearance-none" value={formData.status} onChange={(e)=>setFormData({...formData, status: e.target.value})}>
-                           <option>Active</option>
-                           <option>On Hold</option>
-                           <option>At Risk</option>
-                        </select>
-                    </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-6">
+                 <div className="space-y-2">
+                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</label>
+                   <input required type="email" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 outline-none focus:border-[#6366F1]" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
                  </div>
-                 <button type="submit" className="w-full bg-[#2b945f] text-white py-8 rounded-[40px] text-xl font-black shadow-2xl active:translate-y-2 border-b-[10px] border-black transition-all mt-6 uppercase italic">
-                   {editingId ? 'COMMIT_RECALIBRATION' : 'INITIALIZE_COLLECTION'}
-                 </button>
-              </form>
-           </div>
+                 <div className="space-y-2">
+                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Website URL</label>
+                   <input type="text" placeholder="https://..." className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 outline-none focus:border-[#6366F1]" value={formData.website_url} onChange={(e) => setFormData({...formData, website_url: e.target.value})} />
+                 </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-6">
+                 <div className="space-y-2">
+                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Monthly Value ($)</label>
+                   <input type="number" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 outline-none focus:border-[#6366F1]" value={formData.monthly_value} onChange={(e) => setFormData({...formData, monthly_value: e.target.value})} />
+                 </div>
+                 <div className="space-y-2 relative">
+                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</label>
+                   <select className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 appearance-none font-semibold outline-none" value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}>
+                     <option>Active</option>
+                     <option>On Hold</option>
+                     <option>At Risk</option>
+                   </select>
+                   <ChevronDown size={14} className="absolute right-3 top-[43px] text-slate-400" />
+                 </div>
+               </div>
+
+               {/* SERVICES SECTION FROM YOUR SCREENSHOT */}
+               <div className="space-y-3">
+                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Services</label>
+                 <div className="flex flex-wrap gap-2">
+                   {availableServices.map(s => (
+                     <button 
+                       key={s} type="button" 
+                       onClick={() => toggleService(s)}
+                       className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                        formData.services.includes(s) 
+                          ? 'bg-indigo-50 border-[#6366F1] text-[#6366F1] shadow-sm shadow-indigo-100' 
+                          : 'bg-slate-50 border-slate-100 text-slate-500 hover:border-slate-300'
+                       }`}
+                     >
+                       {s}
+                     </button>
+                   ))}
+                 </div>
+               </div>
+
+               <div className="space-y-2 relative">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Start Date</label>
+                  <div className="relative">
+                    <input type="date" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 outline-none focus:border-[#6366F1] appearance-none" value={formData.start_date} onChange={(e) => setFormData({...formData, start_date: e.target.value})} />
+                    <Calendar className="absolute right-4 top-3 text-slate-400" size={16}/>
+                  </div>
+               </div>
+
+               <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Notes</label>
+                  <textarea rows="3" className="w-full bg-slate-50 border border-slate-100 rounded-xl p-4 outline-none focus:border-[#6366F1]" value={formData.notes} onChange={(e) => setFormData({...formData, notes: e.target.value})} />
+               </div>
+
+               <footer className="pt-4 border-t border-slate-50 flex justify-end gap-3">
+                 <button onClick={closeModal} type="button" className="px-6 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 transition-colors">Cancel</button>
+                 <button type="submit" className="px-6 py-2 rounded-lg bg-[#6366F1] text-white text-xs font-bold hover:bg-[#585af2] transition-colors shadow-lg">Add Client</button>
+              </footer>
+            </form>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-// SHARED IDENTITY INTERFACE COMPONENTS
-function ClientStat({ label, value, color }) {
+// SHARED STAT CARD COMPONENT
+function StatCard({ label, value, color }) {
   return (
-    <div className="bg-white p-10 rounded-[45px] border-2 border-slate-50 shadow-sm text-center group hover:-translate-y-4 hover:border-[#2b945f] transition-all duration-700">
-       <p className="text-[10px] font-black italic uppercase text-slate-400 mb-2 tracking-[0.4em]">{label}</p>
-       <h4 className={`text-6xl font-black italic tracking-tighter uppercase leading-none ${color}`}>{value}</h4>
+    <div className="bg-white p-7 rounded-[22px] border border-slate-100 shadow-sm flex flex-col items-center justify-center transition-all hover:shadow-md">
+       <h2 className={`text-4xl font-extrabold mb-1 ${color}`}>{value}</h2>
+       <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">{label}</p>
     </div>
   );
-}
-
-function IdentityLine({ icon, label, value }) {
-  return (
-    <div className="flex items-center gap-4 group">
-      <div className="p-2 bg-slate-50 text-slate-400 rounded-lg transition-colors group-hover:bg-[#2b945f]/10 group-hover:text-[#2b945f]">
-        {icon}
-      </div>
-      <div className="truncate">
-        <p className="text-[9px] font-black italic uppercase opacity-20">{label}</p>
-        <p className="text-[11px] font-black italic uppercase tracking-tight truncate max-w-[140px]">{value}</p>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, placeholder, val, setVal, type = "text" }) {
-   return (
-    <div className="space-y-3">
-       <label className="text-[9px] font-black italic uppercase text-slate-400 ml-4 tracking-[0.2em]">{label}</label>
-       <input required type={type} placeholder={placeholder} value={val} onChange={(e)=>setVal(e.target.value)} className="w-full bg-[#F9FBFC] p-6 rounded-[28px] font-black italic border-none placeholder:opacity-10 shadow-inner focus:ring-4 ring-[#2b945f]/10 transition-all uppercase"/>
-    </div>
-   );
 }

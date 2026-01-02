@@ -1,210 +1,220 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { Mail, Lock, Building2, ShieldAlert, UserPlus, KeyRound, User, Loader2 } from 'lucide-react';
+import { 
+  Mail, Lock, User, Loader2, Sparkles, 
+  ShieldAlert, Fingerprint, Command,
+  AlertCircle, ChevronRight, Globe
+} from 'lucide-react';
 
 export default function Login() {
-  const [isSignup, setIsSignup] = useState(false); 
-  const [identifier, setIdentifier] = useState(''); 
-  const [fullName, setFullName] = useState(''); 
-  const [password, setPassword] = useState('');
+  const [isSignup, setIsSignup] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isPendingApproval, setIsPendingApproval] = useState(false);
+  
+  // Input Matrix
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
-  // AUTH HANDSHAKE PROTOCOL: Optimized for Sir Rabnawaz's Registry
+  // SESSION SECURITY CHECK
+  useEffect(() => {
+    checkInitialStatus();
+  }, []);
+
+  const checkInitialStatus = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) checkUserRegistry(session.user.id);
+  };
+
+  const checkUserRegistry = async (uid) => {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('is_approved')
+      .eq('id', uid)
+      .single();
+
+    if (profile && !profile.is_approved) {
+      setIsPendingApproval(true);
+    }
+  };
+
+  // ALPHA AUTH FLOW
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
 
-    // SECURITY NORMALIZATION: Standardizing node identification
-    const cleanId = identifier.trim().toLowerCase();
-    const formattedEmail = cleanId.includes('@') 
-      ? cleanId 
-      : `${cleanId}@codenest.com`;
-
     try {
       if (isSignup) {
-        // --- 1. HQ ENROLLMENT PHASE ---
+        if (password !== confirmPassword) throw new Error("Passwords mismatch in security buffer.");
+        
         const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: formattedEmail,
-          password: password,
+          email, password,
         });
-
         if (authError) throw authError;
 
         if (authData.user) {
-          // --- 2. REGISTRY INJECTION: Mapping new node for Admin review ---
+          // INSERT INTO PENDING REGISTRY FOR RABNAWAZ REVIEW
           const { error: profileError } = await supabase.from('profiles').insert([
             { 
               id: authData.user.id, 
-              full_name: fullName.toUpperCase().trim(), 
-              role: 'employee', 
-              is_approved: false // NODE GATED: WAITING FOR SIR RABNAWAZ
+              full_name: fullName.toUpperCase(), 
+              role: 'EMPLOYEE', 
+              is_approved: false 
             }
           ]);
-
           if (profileError) throw profileError;
-
-          alert("TRANSMISSION SUCCESS: Personnel node logged. Wait for Sir Rabnawaz to authorize access via HQ Dashboard.");
-          setIsSignup(false);
-          setFullName('');
-          setIdentifier('');
+          setIsPendingApproval(true);
+          alert("NODE CREATED: Transmission sent to Admin Rabnawaz for authorization.");
         }
       } else {
-        // --- 3. TERMINAL ACCESS PHASE ---
-        const { data, error: loginError } = await supabase.auth.signInWithPassword({ 
-          email: formattedEmail, 
-          password: password 
-        });
-
-        if (loginError) {
-          const message = loginError.message === "Invalid login credentials" 
-            ? "IDENTIFIER OR CIPHER MISMATCH. RE-CHECK NODE ID." 
-            : loginError.message.toUpperCase();
-          throw new Error(message);
-        }
+        // LOGIN PHASE
+        const { data, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+        if (loginError) throw loginError;
+        if (data.user) checkUserRegistry(data.user.id);
       }
-    } catch (error) {
-      alert("TERMINAL ERROR: " + error.message);
+    } catch (err) {
+      alert("SYSTEM ACCESS DENIED: " + err.message.toUpperCase());
     } finally {
       setLoading(false);
     }
   };
 
+  // GOOGLE ENTRANCE PROTOCOL
+  const handleSocialAuth = async (provider) => {
+    const { error } = await supabase.auth.signInWithOAuth({ provider });
+    if (error) alert("OAUTH INTERFACE ERROR: " + error.message);
+  };
+
+  // UI STATE: THE "WAITING ROOM" (BLOCKER)
+  if (isPendingApproval) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-6">
+        <div className="w-full max-w-[460px] bg-white rounded-[32px] p-12 text-center border border-slate-100 shadow-2xl relative overflow-hidden animate-in fade-in zoom-in-95 duration-700">
+           <div className="absolute top-0 left-0 w-full h-1.5 bg-indigo-600"></div>
+           <div className="mb-8 flex justify-center">
+             <div className="w-20 h-20 bg-amber-50 rounded-[28px] flex items-center justify-center border border-amber-100">
+               <ShieldAlert className="text-amber-500 animate-pulse" size={38} />
+             </div>
+           </div>
+           <h2 className="text-2xl font-black italic text-slate-900 uppercase tracking-tighter mb-4">Node Pending Approval</h2>
+           <p className="text-slate-500 text-sm font-bold uppercase leading-relaxed tracking-tight mb-8">
+             System Admin <span className="text-indigo-600">Sir Rabnawaz</span> must authorize your access module before entrance is granted. 
+             <br /><span className="text-[10px] text-slate-300">REQUEST ID: {email}</span>
+           </p>
+           <button onClick={() => supabase.auth.signOut().then(() => setIsPendingApproval(false))} className="w-full bg-slate-900 text-white h-14 rounded-2xl font-black text-xs uppercase tracking-[0.2em] italic flex items-center justify-center gap-2 hover:bg-black transition-all shadow-xl">
+             Sign Out Protocol
+           </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="fixed inset-0 h-screen w-screen bg-[#0c3740] flex flex-col items-center justify-center font-sans selection:bg-[#2b945f] selection:text-white overflow-hidden select-none m-0 p-0 border-none relative">
-      
-      {/* TECHNICAL BACKGROUND GRID */}
-      <div className="absolute inset-0 opacity-10 pointer-events-none" 
-           style={{ backgroundImage: `radial-gradient(#2b945f 1px, transparent 1px)`, backgroundSize: '24px 24px' }}></div>
-      
-      {/* 80% SCALE MODULE BOX (HIGH-DENSITY WRAPPER) */}
-      <div className="w-full max-w-[380px] animate-in fade-in zoom-in-95 duration-1000 p-4" style={{ zoom: '0.8' }}>
+    <div className="min-h-screen w-full bg-[#F8FAFC] flex items-center justify-center p-6 font-sans">
+      <div className="w-full max-w-[480px] bg-white rounded-[35px] border border-slate-100 shadow-[0_30px_70px_rgba(15,23,42,0.08)] p-10 md:p-14 relative z-10 animate-in fade-in slide-in-from-bottom-6 duration-1000">
         
-        {/* HARDWARE MODULE CONTAINER */}
-        <div className="bg-[#0c3740]/90 backdrop-blur-xl rounded-[4px] shadow-[0_30px_70px_-15px_rgba(0,0,0,0.9),0_0_20px_rgba(43,148,95,0.15)] overflow-hidden border border-[#2b945f]/20 relative z-10">
-            
-            {/* TERMINAL HEADER */}
-            <div className={`p-8 text-center text-white relative transition-all duration-700 border-b border-[#2b945f]/20 ${isSignup ? 'bg-gradient-to-b from-[#0c3740] to-black/20' : 'bg-gradient-to-b from-[#2b945f]/20 to-transparent'}`}>
-                {/* FLOATING DECOR */}
-                <div className="absolute top-2 left-2 flex gap-1.5 opacity-30">
-                  <div className="w-1.5 h-1.5 bg-[#2b945f] rounded-full animate-pulse"></div>
-                  <div className="w-8 h-[1px] bg-[#2b945f]/50 self-center"></div>
-                </div>
-                
-                <div className="flex justify-center mb-5 relative z-10">
-                    <div className="bg-[#0c3740] p-4 rounded-none border border-[#2b945f] shadow-[0_0_15px_rgba(43,148,95,0.4)] transform rotate-45 group hover:rotate-90 transition-transform duration-500">
-                       <div className="-rotate-45 group-hover:-rotate-90 transition-transform">
-                        {isSignup ? <KeyRound size={28} className="text-[#2b945f]" /> : <Building2 size={28} className="text-[#2b945f]" />}
-                       </div>
-                    </div>
-                </div>
-                
-                <h1 className="text-3xl font-black italic uppercase tracking-[0.2em] leading-tight text-white drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
-                    {isSignup ? "Register" : "Code Nest"}
-                </h1>
-                <p className="text-[10px] font-bold text-[#2b945f] mt-3 uppercase tracking-[0.5em] italic border-t border-[#2b945f]/20 pt-3 inline-block">
-                    {isSignup ? "Personnel Enrollment Node" : "Authorized Access Only"}
-                </p>
-            </div>
-
-            {/* DATA INPUT LAYER (TECHNICAL DARK SURFACE) */}
-            <div className="p-7 bg-[#0c3740]/40">
-                <form onSubmit={handleAuth} className="space-y-3">
-                    
-                    {/* NODE FULL NAME (REGISTRY ONLY) */}
-                    {isSignup && (
-                        <div className="animate-in slide-in-from-left-4 duration-500">
-                            <label className="block text-[10px] font-black text-[#2b945f] mb-1.5 uppercase tracking-widest italic opacity-80">Full Name String // Profile ID</label>
-                            <div className="relative group">
-                                <User size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#2b945f]/40 group-focus-within:text-[#2b945f] transition-all" />
-                                <input 
-                                    type="text" 
-                                    required 
-                                    placeholder="ENTRY NODE NAME"
-                                    className="w-full bg-black/40 border border-[#2b945f]/10 pl-11 p-4 rounded-none text-[11px] font-black italic text-white outline-none focus:border-[#2b945f] focus:ring-1 focus:ring-[#2b945f]/50 transition-all uppercase placeholder:opacity-10 tracking-[0.1em]" 
-                                    onChange={(e) => setFullName(e.target.value)} 
-                                    value={fullName}
-                                />
-                            </div>
-                        </div>
-                    )}
-
-                    {/* TERMINAL IDENTIFIER */}
-                    <div className="transition-all duration-300">
-                        <label className="block text-[10px] font-black text-[#2b945f] mb-1.5 uppercase tracking-widest italic opacity-80">Encryption Node // ID</label>
-                        <div className="relative group">
-                            <Mail size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#2b945f]/40 group-focus-within:text-[#2b945f] transition-all" />
-                            <input 
-                                type="text" 
-                                required 
-                                placeholder={isSignup ? "SET_NODE_IDENTIFIER" : "INPUT_HQ_CREDENTIALS"}
-                                className="w-full bg-black/40 border border-[#2b945f]/10 pl-11 p-4 rounded-none text-[11px] font-black italic text-white outline-none focus:border-[#2b945f] focus:ring-1 focus:ring-[#2b945f]/50 transition-all uppercase placeholder:opacity-10 tracking-[0.1em]" 
-                                onChange={(e) => setIdentifier(e.target.value)} 
-                                value={identifier}
-                            />
-                        </div>
-                    </div>
-
-                    {/* SECURITY CIPHER */}
-                    <div className="transition-all duration-300">
-                        <label className="block text-[10px] font-black text-[#2b945f] mb-1.5 uppercase tracking-widest italic opacity-80">Alpha Cipher Key</label>
-                        <div className="relative group">
-                            <Lock size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#2b945f]/40 group-focus-within:text-[#2b945f] transition-all" />
-                            <input 
-                                type="password" 
-                                required 
-                                placeholder="••••••••"
-                                className="w-full bg-black/40 border border-[#2b945f]/10 pl-11 p-4 rounded-none text-[11px] font-black italic text-[#2b945f] outline-none focus:border-[#2b945f] focus:ring-1 focus:ring-[#2b945f]/50 transition-all tracking-[0.4em]" 
-                                onChange={(e) => setPassword(e.target.value)} 
-                                value={password}
-                            />
-                        </div>
-                    </div>
-
-                    {/* HQ COMMAND BUTTON */}
-                    <div className="pt-5">
-                        <button 
-                            disabled={loading} 
-                            className={`w-full font-black py-4 rounded-none transition-all duration-300 text-[12px] uppercase tracking-[0.3em] active:scale-[0.98] italic flex items-center justify-center gap-3 overflow-hidden group relative
-                            ${isSignup 
-                              ? 'bg-transparent border border-[#2b945f] text-[#2b945f] hover:bg-[#2b945f] hover:text-[#0c3740]' 
-                              : 'bg-[#2b945f] text-[#0c3740] hover:bg-[#34b474] shadow-[0_0_20px_rgba(43,148,95,0.3)] hover:shadow-[0_0_30px_rgba(43,148,95,0.5)]'}`}
-                        >
-                            {loading ? (
-                              <Loader2 size={18} className="animate-spin" />
-                            ) : (
-                              <>
-                                <span>{isSignup ? "Submit Enrollment" : "Initiate Connection"}</span>
-                                <div className="absolute right-[-10px] top-0 bottom-0 w-8 bg-white/20 skew-x-[30deg] translate-x-[-300px] group-hover:translate-x-[400px] transition-transform duration-1000"></div>
-                              </>
-                            )}
-                        </button>
-                    </div>
-                </form>
-
-                {/* PROTOCOL MODE TOGGLE */}
-                <div className="mt-6 pt-5 border-t border-[#2b945f]/10 text-center">
-                    <button 
-                        onClick={() => { setIsSignup(!isSignup); setIdentifier(''); setPassword(''); }}
-                        className="text-[10px] font-black uppercase tracking-[0.25em] text-[#2b945f]/60 hover:text-[#2b945f] transition-colors italic relative group"
-                    >
-                        {isSignup ? "Existing Personnel >> Log In" : "Request Node Access >> Register"}
-                        <span className="absolute bottom-[-4px] left-0 w-0 h-[1px] bg-[#2b945f] transition-all group-hover:w-full"></span>
-                    </button>
-                </div>
-            </div>
+        {/* TOP STATUS ROW */}
+        <div className="flex justify-between items-center mb-10">
+          <div className="w-12 h-12 bg-indigo-600 rounded-[18px] flex items-center justify-center shadow-lg shadow-indigo-100 group cursor-help transition-all duration-500 hover:rotate-[10deg]">
+            <Command className="text-white" size={24} />
+          </div>
+          <button onClick={() => setIsSignup(!isSignup)} className="text-[10px] font-black uppercase text-indigo-500 hover:text-indigo-700 tracking-[0.2em] italic border-b-2 border-transparent hover:border-indigo-600 transition-all">
+            {isSignup ? "System Log In" : "Register Node"}
+          </button>
         </div>
 
-        {/* METADATA TAGS */}
-        <div className="mt-8 flex justify-between items-center px-2 opacity-40">
-           <div className="space-y-1">
-             <p className="text-[10px] font-black text-[#2b945f] uppercase tracking-[0.4em] italic">Code Nest ERP Alpha</p>
-             <p className="text-[8px] font-bold text-white uppercase tracking-[0.3em] italic">Node Ref: MAHK-1.0.4</p>
+        {/* LOGO AREA */}
+        <div className="mb-10">
+           <h1 className="text-3xl font-black text-slate-900 italic uppercase tracking-tighter leading-none mb-2">Code Nest</h1>
+           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] italic opacity-60 flex items-center gap-2">
+             <Globe size={10} /> Authorized HQ Interface
+           </p>
+        </div>
+
+        {/* FORM GRID */}
+        <form onSubmit={handleAuth} className="space-y-6">
+          {isSignup && (
+             <div className="animate-in slide-in-from-top-4 duration-300">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2 block italic">Subject Full Name</label>
+                <div className="relative group">
+                  <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" />
+                  <input type="text" required placeholder="ENTRANCE NAME" value={fullName} onChange={e => setFullName(e.target.value)}
+                    className="w-full bg-slate-50 h-14 rounded-2xl pl-12 pr-4 border-none text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-600/10 placeholder:text-slate-300 tracking-[0.1em] uppercase transition-all" />
+                </div>
+             </div>
+          )}
+
+          <div>
+             <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2 block italic">System Identifier // Email</label>
+             <div className="relative group">
+               <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" />
+               <input type="email" required placeholder="SYSTEM_IDENTIFIER@NEST.COM" value={email} onChange={e => setEmail(e.target.value)}
+                className="w-full bg-slate-50 h-14 rounded-2xl pl-12 pr-4 border-none text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-600/10 placeholder:text-slate-300 transition-all" />
+             </div>
+          </div>
+
+          <div className={`grid gap-4 ${isSignup ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <div>
+               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2 block italic">Alpha Cipher</label>
+               <div className="relative group">
+                 <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" />
+                 <input type="password" required placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)}
+                  className="w-full bg-slate-50 h-14 rounded-2xl pl-12 pr-4 border-none text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-600/10 tracking-[0.4em] transition-all" />
+               </div>
+            </div>
+            {isSignup && (
+              <div>
+                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2 block italic">Confirm Key</label>
+                 <div className="relative group">
+                   <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" />
+                   <input type="password" required placeholder="••••••••" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                    className="w-full bg-slate-50 h-14 rounded-2xl pl-12 pr-4 border-none text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-600/10 tracking-[0.4em] transition-all" />
+                 </div>
+              </div>
+            )}
+          </div>
+
+          <button disabled={loading} type="submit" 
+            className="w-full bg-indigo-600 hover:bg-indigo-700 h-14 rounded-2xl text-white font-black text-[12px] uppercase tracking-[0.3em] shadow-xl shadow-indigo-100 italic transition-all active:scale-95 flex items-center justify-center gap-3 relative overflow-hidden group">
+            {loading ? <Loader2 size={18} className="animate-spin text-white/50" /> : (
+              <>
+                <Sparkles size={16} className="group-hover:rotate-12 transition-transform" />
+                <span>{isSignup ? "Register Protocol" : "Verify Entrance"}</span>
+              </>
+            )}
+          </button>
+        </form>
+
+        {/* SOCIAL LAYER */}
+        <div className="mt-12">
+           <div className="flex items-center gap-4 mb-8">
+              <div className="h-[1px] bg-slate-100 flex-1"></div>
+              <span className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em] italic">Or Auth with Cloud Node</span>
+              <div className="h-[1px] bg-slate-100 flex-1"></div>
            </div>
-           <div className="text-right">
-             <ShieldAlert size={14} className="text-[#2b945f] ml-auto mb-1" />
-             <p className="text-[8px] font-bold text-white uppercase tracking-[0.1em] italic">SEC_ENCR_ACTIVE</p>
+
+           <div className="flex flex-col sm:flex-row gap-4">
+              <button onClick={() => handleSocialAuth('google')} className="flex-1 bg-white border border-slate-100 h-14 rounded-2xl flex items-center justify-center gap-3 text-slate-800 text-[10px] font-black uppercase tracking-widest hover:border-indigo-400 hover:bg-indigo-50/20 transition-all shadow-sm group">
+                <span className="text-lg">G+</span> google
+                <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
+              </button>
+              <button onClick={() => handleSocialAuth('facebook')} className="flex-1 bg-white border border-slate-100 h-14 rounded-2xl flex items-center justify-center gap-3 text-slate-800 text-[10px] font-black uppercase tracking-widest hover:border-indigo-400 hover:bg-indigo-50/20 transition-all shadow-sm group">
+                 <div className="w-6 h-6 bg-slate-900 rounded-md text-white flex items-center justify-center font-bold">f</div> facebook
+                 <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
+              </button>
            </div>
         </div>
+
+        {/* SYSTEM STATUS LABELS */}
+        <div className="mt-12 flex justify-between opacity-30 px-2">
+           <div className="flex items-center gap-2">
+             <Fingerprint size={12} className="text-slate-500" />
+             <span className="text-[8px] font-black uppercase tracking-[0.3em] text-slate-400 italic">Nest Core Ready</span>
+           </div>
+           <span className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-400">Ver-A.0234 // Locked-01</span>
+        </div>
+
       </div>
     </div>
   );

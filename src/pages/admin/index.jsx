@@ -10,15 +10,16 @@ import TaskSequencing from './TaskSequencing';
 import ProjectMatrix from './ProjectMatrix';
 import FinanceVault from './FinanceVault';
 import HQSettings from './HQSettings';
+import Analytics from './Analytics'; // CRITICAL FIX: The previously missing node
 
-// 2. IMPORT UI ICONS (NATIVE SCALED)
-import { Bell, Search, LogOut, Cpu } from 'lucide-react';
+// 2. UI ICONS
+import { LogOut } from 'lucide-react';
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [pendingCount, setPendingCount] = useState(0);
 
-  // LOGIC: REAL-TIME NOTIFICATION HUB
+  // LOGIC: THE BRAIN - REAL-TIME NOTIFICATION HUB
   useEffect(() => {
     const fetchPendingCount = async () => {
       const { count } = await supabase
@@ -43,10 +44,13 @@ export default function AdminDashboard() {
     window.location.reload(); 
   };
 
+  // LAYOUT ENGINE: Determines which nodes get edge-to-edge rendering vs constrained padding
+  const isEdgeToEdge = activeTab === 'dashboard' || activeTab === 'team';
+
   return (
-    <div className="flex h-screen w-full bg-[#F9FBFC] font-black italic uppercase overflow-hidden">
+    <div className="flex h-screen w-full bg-[#F9FBFC] font-sans overflow-hidden">
       
-      {/* 1. SIDEBAR NODE: NATIVE 300px WIDTH */}
+      {/* 1. SIDEBAR NODE: THE MASTER NAVIGATION */}
       <AdminSidebar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
@@ -57,26 +61,42 @@ export default function AdminDashboard() {
       {/* 2. MAIN EXECUTION FRAME */}
       <main className="flex-1 flex flex-col min-w-0 h-screen relative bg-[#F9FBFC]">
         
-        {/* HEADER SECTION REMOVED FOR UNIFIED DASHBOARD LOOK */}
-
-        {/* 3. DYNAMIC CONTENT INJECTION */}
-        <div className="flex-1 overflow-y-auto bg-[#F9FBFC] relative">
+        {/* 3. DYNAMIC CONTENT INJECTION ZONE */}
+        <div className="flex-1 overflow-y-auto bg-[#F9FBFC] relative custom-scrollbar">
           
-          {/* Edge-to-edge rendering for primary nodes with internal navbars */}
+          {/* Dashboard and Team utilize custom full-viewport padding within their files */}
           {activeTab === 'dashboard' && <DashboardOverview setActiveTab={setActiveTab} />}
-          {activeTab === 'team' && <StaffRegistry setActiveTab={setActiveTab} />}
+          {activeTab === 'team' && <StaffRegistry />}
 
-          {/* Padding-restricted rendering for standard nodes */}
-          <div className={activeTab !== 'dashboard' && activeTab !== 'team' ? "p-8 max-w-[1550px] mx-auto pb-20" : ""}>
+          {/* Standard Padded Matrix Containers (Analytics fixed here) */}
+          <div className={!isEdgeToEdge ? "p-8 max-w-[1600px] mx-auto pb-24" : ""}>
              {activeTab === 'clients' && <ClientsCenter />}
-             {activeTab === 'tasks' && <TaskSequencing />}
              {activeTab === 'projects' && <ProjectMatrix />}
+             {activeTab === 'tasks' && <TaskSequencing />}
              {activeTab === 'finance' && <FinanceVault />}
+             {activeTab === 'analytics' && <Analytics />}
              {activeTab === 'settings' && <HQSettings />}
           </div>
           
         </div>
       </main>
+
+      {/* Global CSS for scroll performance */}
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #e2e8f0;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #6366f1;
+        }
+      `}</style>
     </div>
   );
 }
